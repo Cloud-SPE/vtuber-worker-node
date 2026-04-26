@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	registryv1 "github.com/Cloud-SPE/livepeer-service-registry/proto/gen/go/livepeer/registry/v1"
+	registryv1 "github.com/Cloud-SPE/livepeer-modules-project/service-registry-daemon/proto/gen/go/livepeer/registry/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

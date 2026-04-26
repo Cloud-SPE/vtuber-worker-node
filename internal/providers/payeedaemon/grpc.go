@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	paymentsv1 "github.com/Cloud-SPE/livepeer-payment-library/proto/gen/go/livepeer/payments/v1"
+	paymentsv1 "github.com/Cloud-SPE/livepeer-modules-project/payment-daemon/proto/gen/go/livepeer/payments/v1"
 )
 
 // grpcClient is the production Client, talking to the daemon over a

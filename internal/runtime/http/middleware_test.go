@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/Cloud-SPE/livepeer-payment-library/config/sharedyaml"
+	"github.com/Cloud-SPE/livepeer-modules-project/payment-daemon/config/sharedyaml"
 
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/config"
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/providers/payeedaemon"

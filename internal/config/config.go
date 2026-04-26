@@ -3,7 +3,7 @@ package config
 import (
 	"fmt"
 
-	"github.com/Cloud-SPE/livepeer-payment-library/config/sharedyaml"
+	"github.com/Cloud-SPE/livepeer-modules-project/payment-daemon/config/sharedyaml"
 
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/types"
 )

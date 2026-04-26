@@ -38,12 +38,19 @@ services:
     build:
       # Default context = this repo.
       context: .
-      # Expose the sibling library repos to the build. Required while
-      # go.mod has `replace` directives; both drop out once both
-      # libraries are tagged.
+      # Expose the modules-project siblings to the build. Required
+      # while go.mod has `replace` directives; all three drop out
+      # once livepeer-modules-project publishes tagged Go modules
+      # (its plan 0008).
+      #
+      # `chain_commons` is needed because both daemons transitively
+      # replace it in their own go.mod files; Go's replace doesn't
+      # propagate from libraries, so the worker's go.mod has its own
+      # chain-commons replace and the build needs the dir present.
       additional_contexts:
-        library: ../livepeer-payment-library
-        registry: ../livepeer-service-registry
+        library: ../livepeer-modules-project/payment-daemon
+        registry: ../livepeer-modules-project/service-registry-daemon
+        chain_commons: ../livepeer-modules-project/chain-commons
     command:
       - "--config=/etc/livepeer/worker.yaml"
       - "--log-level=info"
