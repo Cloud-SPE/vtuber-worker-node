@@ -4,39 +4,46 @@
 # CGO_ENABLED=0 for a statically-linked binary that drops into
 # distroless/static. `netgo,osusergo` guarantee no glibc shim deps.
 #
-# This Dockerfile assumes two build contexts:
+# This Dockerfile assumes three build contexts:
 #   - the default context = this repo (vtuber-worker-node)
-#   - a named context `library` = livepeer-payment-library, made
-#     available via compose `additional_contexts` (see compose.yaml)
-#     OR via buildx `--build-context library=../livepeer-payment-library`.
+#   - a named context `library`  = livepeer-payment-library
+#   - a named context `registry` = livepeer-service-registry
 #
-# Once the library tags a release and vtuber-worker-node drops the
-# `replace` directive in go.mod, the `library` context goes away and
+# Both siblings are reached via `additional_contexts` from compose
+# (see compose.yaml) or via buildx flags:
+#   --build-context library=../livepeer-payment-library
+#   --build-context registry=../livepeer-service-registry
+#
+# Once both libraries tag releases and vtuber-worker-node drops the
+# `replace` directives in go.mod, the additional contexts go away and
 # this file becomes a standard single-context Go build.
 FROM golang:1.25-alpine AS builder
 
 WORKDIR /src
 
-# Sibling library into a path the `replace` directive can reach. The
-# sed rewrite points the replace at the in-container path, preserving
-# the local-dev workflow without losing the go.mod-honesty of the
-# `replace` directive in source.
-COPY --from=library . /sibling/livepeer-payment-library
+# Siblings into paths the `replace` directives can reach. The sed
+# rewrite below points each replace at the in-container path,
+# preserving the local-dev workflow without losing the go.mod-honesty
+# of the `replace` directives in source.
+COPY --from=library  . /sibling/livepeer-payment-library
+COPY --from=registry . /sibling/livepeer-service-registry
 
 COPY go.mod go.sum ./
 # rewrite-then-download primes the module cache before the full source
 # copy so we keep the layer cache hot when only Go source changes.
 RUN sed -i \
-        's|replace github.com/Cloud-SPE/livepeer-payment-library => ../livepeer-payment-library|replace github.com/Cloud-SPE/livepeer-payment-library => /sibling/livepeer-payment-library|' \
+        -e 's|replace github.com/Cloud-SPE/livepeer-payment-library => ../livepeer-payment-library|replace github.com/Cloud-SPE/livepeer-payment-library => /sibling/livepeer-payment-library|' \
+        -e 's|replace github.com/Cloud-SPE/livepeer-service-registry => ../livepeer-service-registry|replace github.com/Cloud-SPE/livepeer-service-registry => /sibling/livepeer-service-registry|' \
         go.mod && \
     go mod download
 
 COPY . .
 
 # COPY . . above re-overlaid the original go.mod from the build context.
-# Re-apply the sed so `go build` sees the in-container replace path.
+# Re-apply the sed so `go build` sees the in-container replace paths.
 RUN sed -i \
-        's|replace github.com/Cloud-SPE/livepeer-payment-library => ../livepeer-payment-library|replace github.com/Cloud-SPE/livepeer-payment-library => /sibling/livepeer-payment-library|' \
+        -e 's|replace github.com/Cloud-SPE/livepeer-payment-library => ../livepeer-payment-library|replace github.com/Cloud-SPE/livepeer-payment-library => /sibling/livepeer-payment-library|' \
+        -e 's|replace github.com/Cloud-SPE/livepeer-service-registry => ../livepeer-service-registry|replace github.com/Cloud-SPE/livepeer-service-registry => /sibling/livepeer-service-registry|' \
         go.mod
 
 ARG VERSION=dev

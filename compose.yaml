@@ -38,11 +38,12 @@ services:
     build:
       # Default context = this repo.
       context: .
-      # Expose the sibling library repo to the build. Required while
-      # the go.mod has a `replace` directive; drops out once library
-      # is tagged.
+      # Expose the sibling library repos to the build. Required while
+      # go.mod has `replace` directives; both drop out once both
+      # libraries are tagged.
       additional_contexts:
         library: ../livepeer-payment-library
+        registry: ../livepeer-service-registry
     command:
       - "--config=/etc/livepeer/worker.yaml"
       - "--log-level=info"
