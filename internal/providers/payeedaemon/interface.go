@@ -44,6 +44,19 @@ type Client interface {
 	// this session.
 	DebitBalance(ctx context.Context, sender []byte, workID string, workUnits int64) (DebitBalanceResult, error)
 
+	// SufficientBalance reports whether (sender, workID) has at
+	// least minWorkUnits of remaining balance. Cheap; does not modify
+	// balance. Used by streaming-session modules between Debit ticks
+	// to detect a low-balance state without paying for a debit-then-
+	// refund cycle. See livepeer-payment-library/docs/design-docs/
+	// streaming-session-pattern.md.
+	SufficientBalance(ctx context.Context, sender []byte, workID string, minWorkUnits int64) (SufficientBalanceResult, error)
+
+	// CloseSession releases the daemon's per-(sender, workID) state at
+	// session end. Idempotent on the daemon side. Used by streaming-
+	// session modules; one-shot Module callers don't need it.
+	CloseSession(ctx context.Context, sender []byte, workID string) error
+
 	// Close releases the underlying transport. Calling any other
 	// method after Close is undefined.
 	Close() error
@@ -112,6 +125,30 @@ func (m *meteredClient) DebitBalance(ctx context.Context, sender []byte, workID 
 	m.rec.IncDaemonRPC(metrics.MethodDebitBalance, outcome)
 	m.rec.ObserveDaemonRPC(metrics.MethodDebitBalance, outcome, time.Since(start))
 	return res, err
+}
+
+func (m *meteredClient) SufficientBalance(ctx context.Context, sender []byte, workID string, minWorkUnits int64) (SufficientBalanceResult, error) {
+	start := time.Now()
+	res, err := m.inner.SufficientBalance(ctx, sender, workID, minWorkUnits)
+	outcome := metrics.OutcomeOK
+	if err != nil {
+		outcome = metrics.OutcomeError
+	}
+	m.rec.IncDaemonRPC(metrics.MethodSufficientBalance, outcome)
+	m.rec.ObserveDaemonRPC(metrics.MethodSufficientBalance, outcome, time.Since(start))
+	return res, err
+}
+
+func (m *meteredClient) CloseSession(ctx context.Context, sender []byte, workID string) error {
+	start := time.Now()
+	err := m.inner.CloseSession(ctx, sender, workID)
+	outcome := metrics.OutcomeOK
+	if err != nil {
+		outcome = metrics.OutcomeError
+	}
+	m.rec.IncDaemonRPC(metrics.MethodCloseSession, outcome)
+	m.rec.ObserveDaemonRPC(metrics.MethodCloseSession, outcome, time.Since(start))
+	return err
 }
 
 // Close passes through; lifecycle calls are not metered.

@@ -133,6 +133,31 @@ func (c *grpcClient) DebitBalance(ctx context.Context, sender []byte, workID str
 	}, nil
 }
 
+func (c *grpcClient) SufficientBalance(ctx context.Context, sender []byte, workID string, minWorkUnits int64) (SufficientBalanceResult, error) {
+	resp, err := c.client.SufficientBalance(ctx, &paymentsv1.SufficientBalanceRequest{
+		Sender:       sender,
+		WorkId:       workID,
+		MinWorkUnits: minWorkUnits,
+	})
+	if err != nil {
+		return SufficientBalanceResult{}, fmt.Errorf("payeedaemon: SufficientBalance: %w", err)
+	}
+	return SufficientBalanceResult{
+		Sufficient: resp.GetSufficient(),
+		BalanceWei: new(big.Int).SetBytes(resp.GetBalance()),
+	}, nil
+}
+
+func (c *grpcClient) CloseSession(ctx context.Context, sender []byte, workID string) error {
+	if _, err := c.client.CloseSession(ctx, &paymentsv1.PayeeDaemonCloseSessionRequest{
+		Sender: sender,
+		WorkId: workID,
+	}); err != nil {
+		return fmt.Errorf("payeedaemon: CloseSession: %w", err)
+	}
+	return nil
+}
+
 // priceInfoToWeiString converts a paymentsv1.PriceInfo (int64
 // pricePerUnit / pixelsPerUnit) into a decimal wei string. The daemon
 // stores per-unit prices as integer wei values; pixelsPerUnit is a

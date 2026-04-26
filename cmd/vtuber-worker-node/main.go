@@ -38,8 +38,10 @@ import (
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/providers/backendhttp"
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/providers/metrics"
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/providers/payeedaemon"
+	"github.com/Cloud-SPE/vtuber-worker-node/internal/providers/publisherdaemon"
 	rthttp "github.com/Cloud-SPE/vtuber-worker-node/internal/runtime/http"
 	rtmetrics "github.com/Cloud-SPE/vtuber-worker-node/internal/runtime/metrics"
+	"github.com/Cloud-SPE/vtuber-worker-node/internal/service/modules/vtuber_session"
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/types"
 )
 
@@ -159,6 +161,20 @@ func run(args []string, stderr *os.File) int {
 		return 1
 	}
 
+	// 5b. Service-registry publisher integration (optional, gated by
+	// the presence of `worker.service_registry_publisher` in worker.yaml).
+	// First-run flow: build manifest, sign, atomically write to disk.
+	// On-chain `setServiceURI` is gated behind allow_on_chain_writes.
+	if pub := cfg.Worker.ServiceRegistryPublisher; pub != nil {
+		if err := publishManifest(cfg, pub, logger); err != nil {
+			logger.Error("service-registry publish failed", "err", err)
+			return 1
+		}
+	} else {
+		logger.Info("service-registry publisher not configured; skipping manifest publish",
+			"hint", "set worker.service_registry_publisher.* in worker.yaml to enable")
+	}
+
 	// 6. Server.
 	srv := rthttp.NewServer(mux, cfg.Worker.HTTPListen, logger)
 	serverErr := make(chan error, 1)
@@ -270,10 +286,6 @@ func validateMetricsListen(addr string) error {
 // Returns the number of modules actually registered. Add new modules
 // by appending to the switch below; this is the one place where the
 // binary's capability catalog is enumerated.
-//
-// M1 state: the switch is empty. M3 of the vtuber-worker-node-bootstrap
-// plan adds the `livepeer:vtuber-session` StreamingModule case; later
-// milestones may add more.
 func registerModules(
 	mux *rthttp.Mux,
 	cfg *config.Config,
@@ -284,10 +296,46 @@ func registerModules(
 	registered := 0
 	for _, entry := range cfg.Capabilities.Ordered {
 		switch entry.Capability {
+		case vtuber_session.Capability:
+			// Pick the first model's backend_url. Multi-model
+			// dispatch (resolution × fps × GPU tiers) lands when
+			// pricing-and-capability-registration ships; for the
+			// initial bootstrap one model per capability is the
+			// common case.
+			backendURL := ""
+			if len(entry.Models) > 0 {
+				backendURL = entry.Models[0].BackendURL
+			}
+			modCfg := vtuber_session.Config{
+				BackendURL: backendURL,
+				Logger:     logger,
+				// Bridge stays on the stub until vtuber-livepeer-bridge-mvp
+				// lands the real WebSocket-backed implementation.
+			}
+			if entry.DebitCadenceSeconds > 0 {
+				modCfg.DebitCadence = time.Duration(entry.DebitCadenceSeconds) * time.Second
+			}
+			if entry.SufficientMinRunwaySeconds > 0 {
+				modCfg.RunwayMinUnits = uint64(entry.SufficientMinRunwaySeconds)
+			}
+			if entry.SufficientGraceSeconds > 0 {
+				modCfg.GraceWindow = time.Duration(entry.SufficientGraceSeconds) * time.Second
+			}
+			mod := vtuber_session.New(modCfg)
+			mux.RegisterStreamingRoute(mod)
+			logger.Info("streaming capability registered",
+				"capability", mod.Capability(),
+				"path", mod.HTTPPath(),
+				"models", len(entry.Models),
+				"backend_url", backendURL,
+				"debit_cadence_s", entry.DebitCadenceSeconds,
+				"runway_min_s", entry.SufficientMinRunwaySeconds,
+				"grace_s", entry.SufficientGraceSeconds)
+			registered++
 		default:
 			logger.Warn("config declares capability this build doesn't implement",
 				"capability", entry.Capability,
-				"hint", "M1 skeleton — register a module under internal/service/modules/ and add a case here")
+				"hint", "register a module under internal/service/modules/ and add a case here")
 		}
 	}
 	return registered
@@ -305,6 +353,63 @@ func missingCapabilityModules(mux *rthttp.Mux, cfg *config.Config) []types.Capab
 		}
 	}
 	return missing
+}
+
+// publishManifest runs the BuildSignWrite startup flow against the
+// co-located livepeer-service-registry publisher daemon. Called from
+// main when worker.service_registry_publisher is non-nil. Errors are
+// fatal — refusing to start when the manifest can't be published is
+// safer than running with a stale on-disk file.
+func publishManifest(
+	cfg *config.Config,
+	pub *config.ServiceRegistryPublisherSection,
+	logger *slog.Logger,
+) error {
+	caps := make([]publisherdaemon.CapabilityInput, 0, len(cfg.Capabilities.Ordered))
+	for _, e := range cfg.Capabilities.Ordered {
+		models := make([]publisherdaemon.ModelInput, 0, len(e.Models))
+		for _, m := range e.Models {
+			models = append(models, publisherdaemon.ModelInput{
+				ID:                  string(m.Model),
+				PricePerWorkUnitWei: m.PricePerWorkUnitWei,
+				Warm:                false,
+				ConstraintsJSON:     nil,
+			})
+		}
+		caps = append(caps, publisherdaemon.CapabilityInput{
+			Name:     string(e.Capability),
+			WorkUnit: string(e.WorkUnit),
+			Models:   models,
+		})
+	}
+	client, err := publisherdaemon.Dial(pub.PublisherDaemonSocket, logger)
+	if err != nil {
+		return fmt.Errorf("dial publisher daemon: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	dialCtx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	txHash, err := client.BuildSignWrite(
+		dialCtx,
+		publisherdaemon.NodeIdentity{
+			OperatorEthAddress: pub.OperatorEthAddress,
+			NodeID:             pub.NodeID,
+			NodeURL:            pub.NodeURL,
+		},
+		caps,
+		pub.ManifestOutPath,
+		pub.AllowOnChainWrites,
+		pub.ServiceURI,
+	)
+	if err != nil {
+		return err
+	}
+	logger.Info("service-registry publish complete",
+		"manifest_out_path", pub.ManifestOutPath,
+		"capabilities", len(caps),
+		"on_chain_tx_hash", txHash)
+	return nil
 }
 
 func buildLogger(level string, out *os.File) *slog.Logger {

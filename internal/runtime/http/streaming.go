@@ -1,0 +1,220 @@
+package http
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"math/big"
+	"net/http"
+
+	"github.com/Cloud-SPE/vtuber-worker-node/internal/providers/metrics"
+	"github.com/Cloud-SPE/vtuber-worker-node/internal/providers/payeedaemon"
+	"github.com/Cloud-SPE/vtuber-worker-node/internal/service/modules"
+)
+
+// RegisterStreamingRoute wraps a StreamingModule in the streaming-
+// payment middleware and binds its declared (HTTPMethod, HTTPPath).
+// Panics on duplicate route. Companion to RegisterPaidRoute for the
+// long-lived streaming-session class of capabilities.
+//
+// The middleware: validates the X-Livepeer-Payment header, calls
+// ProcessPayment to credit the session's balance, constructs a
+// PaymentSession adapter, writes a 202 Accepted to the bridge, then
+// invokes module.Serve and blocks for the session lifetime. The module
+// is responsible for periodic Debit ticks, Sufficient checks, low-
+// balance signalling on the WebSocket, and PaymentSession.Close.
+func (m *Mux) RegisterStreamingRoute(mod modules.StreamingModule) {
+	key := mod.HTTPMethod() + " " + mod.HTTPPath()
+	if _, dup := m.registered[key]; dup {
+		panic(fmt.Sprintf("Mux.RegisterStreamingRoute: duplicate route %q", key))
+	}
+	m.registered[key] = struct{}{}
+	m.paidCapabilities[mod.Capability()] = struct{}{}
+
+	handler := streamingMiddleware(streamingDeps{
+		module:   mod,
+		payee:    m.payee,
+		sem:      m.paidSem,
+		logger:   m.logger,
+		recorder: m.recorder,
+	})
+	m.inner.HandleFunc(key, handler)
+}
+
+// streamingDeps bundles the per-route state captured by the
+// streaming middleware closure.
+type streamingDeps struct {
+	module   modules.StreamingModule
+	payee    payeedaemon.Client
+	sem      chan struct{}
+	logger   *slog.Logger
+	recorder metrics.Recorder
+}
+
+// streamingMiddleware is the streaming-session counterpart to the
+// request/response paymentMiddleware. Differences from the request/
+// response middleware:
+//
+//   - No upfront Debit before invoking the module. The module owns
+//     the debit cadence via PaymentSession.Debit.
+//   - Writes 202 Accepted immediately after ProcessPayment succeeds,
+//     so the bridge unblocks and the customer-side WebSocket can
+//     register session-id with the bridge. Subsequent state flows
+//     over the bridge WebSocket, not over this HTTP response.
+//   - Does NOT call PaymentSession.Close; the module is the sole
+//     owner of that call (defer'd in module.Serve so panic paths
+//     also Close).
+func streamingMiddleware(d streamingDeps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// 1. Concurrency cap (shared with one-shot paid routes).
+		select {
+		case d.sem <- struct{}{}:
+		default:
+			http.Error(w, "capacity_exhausted", http.StatusServiceUnavailable)
+			return
+		}
+		defer func() { <-d.sem }()
+
+		// 2. Read the body once; we forward it to the backend in
+		// module.Serve via the request, so we have to buffer + reset
+		// the body reader (no other path Re-reads it; this is
+		// idempotent if module.Serve drains).
+		body, err := io.ReadAll(io.LimitReader(r.Body, streamingMaxBodyBytes))
+		if err != nil {
+			http.Error(w, "body_read: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		_ = r.Body.Close()
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		r.ContentLength = int64(len(body))
+
+		// 3. Validate payment header.
+		paymentB64 := r.Header.Get("X-Livepeer-Payment")
+		if paymentB64 == "" {
+			http.Error(w, "missing X-Livepeer-Payment", http.StatusPaymentRequired)
+			return
+		}
+		paymentBytes, err := base64.StdEncoding.DecodeString(paymentB64)
+		if err != nil {
+			http.Error(w, "X-Livepeer-Payment not base64: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// 4. ProcessPayment → seeds the (sender, work_id) balance.
+		workID := string(deriveWorkID(paymentBytes))
+		ppRes, err := d.payee.ProcessPayment(r.Context(), paymentBytes, workID)
+		if err != nil {
+			d.logger.Warn("streaming: ProcessPayment failed",
+				"err", err, "capability", d.module.Capability())
+			http.Error(w, "ProcessPayment: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// 5. Construct the PaymentSession adapter for this session.
+		ps := newPaymentSessionAdapter(d.payee, ppRes.Sender, workID, d.recorder)
+
+		// 6. 202 Accepted to the bridge. The body echoes the work_id
+		// so the bridge can correlate this session against its own
+		// session-id space if needed.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"status":  "starting",
+			"work_id": workID,
+		})
+		// Ensure the response is on the wire before module.Serve blocks.
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+
+		// 7. Run the session. Serve blocks for the lifetime of the
+		// session. Errors are logged here for operator visibility;
+		// the customer-side surfacing (session.error, session.ended)
+		// is the module's responsibility via the bridge WebSocket.
+		if err := d.module.Serve(r.Context(), r, ps); err != nil {
+			d.logger.Warn("streaming: Serve returned error",
+				"capability", d.module.Capability(),
+				"work_id", workID,
+				"err", err)
+		}
+	}
+}
+
+// streamingMaxBodyBytes caps the session-open request body. Streaming
+// session-open bodies are JSON metadata only (persona + avatar URL +
+// voice + render config + egress block + bearers); 256 KiB is generous.
+// Media bytes do NOT flow through this endpoint — they go via the
+// session-runner's own chunked-POST path to Pipeline egress per
+// ADR-007.
+const streamingMaxBodyBytes = 256 * 1024
+
+// paymentSessionAdapter wraps a payeedaemon.Client into the
+// modules.PaymentSession surface. The wrapper closes over (sender,
+// work_id) so the module's call sites stay clean — they don't need
+// to thread credentials through every Debit / Sufficient / Close.
+type paymentSessionAdapter struct {
+	payee  payeedaemon.Client
+	sender []byte
+	workID string
+	rec    metrics.Recorder
+	closed bool
+}
+
+func newPaymentSessionAdapter(c payeedaemon.Client, sender []byte, workID string, rec metrics.Recorder) *paymentSessionAdapter {
+	return &paymentSessionAdapter{
+		payee:  c,
+		sender: append([]byte(nil), sender...),
+		workID: workID,
+		rec:    rec,
+	}
+}
+
+func (p *paymentSessionAdapter) Debit(ctx context.Context, units uint64, debitSeq uint64) (int64, error) {
+	res, err := p.payee.DebitBalance(ctx, p.sender, p.workID, int64(units))
+	if err != nil {
+		return 0, err
+	}
+	if res.BalanceWei == nil {
+		return 0, nil
+	}
+	return wei64(res.BalanceWei), nil
+}
+
+func (p *paymentSessionAdapter) Sufficient(ctx context.Context, minUnits uint64) (bool, error) {
+	res, err := p.payee.SufficientBalance(ctx, p.sender, p.workID, int64(minUnits))
+	if err != nil {
+		return false, err
+	}
+	return res.Sufficient, nil
+}
+
+func (p *paymentSessionAdapter) Close(ctx context.Context) error {
+	if p.closed {
+		return nil
+	}
+	p.closed = true
+	return p.payee.CloseSession(ctx, p.sender, p.workID)
+}
+
+// wei64 clamps a *big.Int wei value into an int64 for the
+// PaymentSession.Debit return shape. The streaming-session module
+// uses balance only for negative-overdebit detection; full wei
+// precision isn't needed at the module level (the daemon retains it).
+func wei64(b *big.Int) int64 {
+	if b == nil {
+		return 0
+	}
+	if !b.IsInt64() {
+		// Saturate to avoid overflow. Negative overflow (which
+		// shouldn't happen in practice) would be a fatal balance.
+		if b.Sign() < 0 {
+			return -1
+		}
+		return 1<<62 - 1
+	}
+	return b.Int64()
+}

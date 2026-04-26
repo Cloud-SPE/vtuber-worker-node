@@ -38,6 +38,12 @@ type WorkerSection struct {
 	PaymentDaemonSocket            string
 	MaxConcurrentRequests          int
 	VerifyDaemonConsistencyOnStart bool
+
+	// ServiceRegistryPublisher is nil when worker.yaml omits the
+	// section. When non-nil, the worker runs the BuildSignWrite
+	// startup flow against the publisher daemon at the configured
+	// socket.
+	ServiceRegistryPublisher *ServiceRegistryPublisherSection
 }
 
 // CapabilityCatalog is the flattened routing table.
@@ -49,11 +55,32 @@ type CapabilityCatalog struct {
 	Route map[RouteKey]ModelRoute
 }
 
+// ServiceRegistryPublisherSection is the worker-side projection of
+// the optional sharedyaml ServiceRegistryPublisherConfig. Nil when
+// the section is absent in worker.yaml — the worker skips publisher
+// integration in that case.
+type ServiceRegistryPublisherSection struct {
+	PublisherDaemonSocket string
+	ManifestOutPath       string
+	OperatorEthAddress    string
+	NodeID                string
+	NodeURL               string
+	AllowOnChainWrites    bool
+	ServiceURI            string
+}
+
 // CapabilityEntry is one row of the ordered view.
 type CapabilityEntry struct {
 	Capability types.CapabilityID
 	WorkUnit   types.WorkUnit
 	Models     []ModelEntry
+
+	// Streaming-only fields. Zero means "use the consumer module's
+	// default" (typically 5/30/60 per ADR-006). Applied only by
+	// streaming-session modules; one-shot Module capabilities ignore.
+	DebitCadenceSeconds        int
+	SufficientMinRunwaySeconds int
+	SufficientGraceSeconds     int
 }
 
 // ModelEntry is one row of a capability's model list.
@@ -112,6 +139,7 @@ func FromShared(shared *sharedyaml.Config) (*Config, error) {
 			PaymentDaemonSocket:            shared.Worker.PaymentDaemonSocket,
 			MaxConcurrentRequests:          shared.Worker.MaxConcurrentRequests,
 			VerifyDaemonConsistencyOnStart: shared.Worker.VerifyDaemonConsistencyOnStart,
+			ServiceRegistryPublisher:       projectPublisher(shared.Worker.ServiceRegistryPublisher),
 		},
 		Capabilities: CapabilityCatalog{
 			Ordered: make([]CapabilityEntry, 0, len(shared.Capabilities)),
@@ -120,9 +148,12 @@ func FromShared(shared *sharedyaml.Config) (*Config, error) {
 	}
 	for _, c := range shared.Capabilities {
 		entry := CapabilityEntry{
-			Capability: types.CapabilityID(c.Capability),
-			WorkUnit:   types.WorkUnit(c.WorkUnit),
-			Models:     make([]ModelEntry, 0, len(c.Models)),
+			Capability:                 types.CapabilityID(c.Capability),
+			WorkUnit:                   types.WorkUnit(c.WorkUnit),
+			Models:                     make([]ModelEntry, 0, len(c.Models)),
+			DebitCadenceSeconds:        c.DebitCadenceSeconds,
+			SufficientMinRunwaySeconds: c.SufficientMinRunwaySeconds,
+			SufficientGraceSeconds:     c.SufficientGraceSeconds,
 		}
 		for _, m := range c.Models {
 			me := ModelEntry{
@@ -150,4 +181,23 @@ func FromShared(shared *sharedyaml.Config) (*Config, error) {
 func (c *Config) Lookup(cap types.CapabilityID, model types.ModelID) (ModelRoute, bool) {
 	r, ok := c.Capabilities.Route[RouteKey{Capability: cap, Model: model}]
 	return r, ok
+}
+
+// projectPublisher copies the optional sharedyaml ServiceRegistryPublisher
+// section into the worker-internal type. Returns nil when the upstream
+// section is absent — the worker runtime checks for nil to decide
+// whether to dial the publisher daemon at startup.
+func projectPublisher(p *sharedyaml.ServiceRegistryPublisherConfig) *ServiceRegistryPublisherSection {
+	if p == nil {
+		return nil
+	}
+	return &ServiceRegistryPublisherSection{
+		PublisherDaemonSocket: p.PublisherDaemonSocket,
+		ManifestOutPath:       p.ManifestOutPath,
+		OperatorEthAddress:    p.OperatorEthAddress,
+		NodeID:                p.NodeID,
+		NodeURL:               p.NodeURL,
+		AllowOnChainWrites:    p.AllowOnChainWrites,
+		ServiceURI:            p.ServiceURI,
+	}
 }

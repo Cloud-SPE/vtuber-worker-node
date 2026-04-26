@@ -24,6 +24,8 @@ type Fake struct {
 
 	ProcessPaymentError       error
 	DebitBalanceError         error
+	SufficientBalanceError    error
+	CloseSessionError         error
 	ListCapabilitiesResponse  ListCapabilitiesResult
 	ListCapabilitiesError     error
 	GetQuoteResponse          GetQuoteResult
@@ -33,11 +35,16 @@ type Fake struct {
 	SenderAddress             []byte
 	ProcessPaymentCalls       int
 	DebitBalanceCalls         int
+	SufficientBalanceCalls    int
+	CloseSessionCalls         int
 	GetQuoteCalls             int
 	LastProcessPaymentPayload []byte
 	LastDebitBalanceWorkUnits int64
 	LastProcessPaymentWorkID  string
 	LastDebitBalanceWorkID    string
+	LastSufficientWorkID      string
+	LastSufficientMinUnits    int64
+	LastCloseSessionWorkID    string
 	LastGetQuoteSender        []byte
 	LastGetQuoteCapability    string
 
@@ -121,6 +128,39 @@ func (f *Fake) DebitBalance(_ context.Context, sender []byte, workID string, wor
 	bal.Sub(bal, debit)
 	f.balances[key] = bal
 	return DebitBalanceResult{BalanceWei: new(big.Int).Set(bal)}, nil
+}
+
+func (f *Fake) SufficientBalance(_ context.Context, sender []byte, workID string, minWorkUnits int64) (SufficientBalanceResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.SufficientBalanceCalls++
+	f.LastSufficientWorkID = workID
+	f.LastSufficientMinUnits = minWorkUnits
+	if f.SufficientBalanceError != nil {
+		return SufficientBalanceResult{}, f.SufficientBalanceError
+	}
+	key := balanceKey(sender, workID)
+	bal, ok := f.balances[key]
+	if !ok {
+		bal = new(big.Int)
+	}
+	min := new(big.Int).Mul(f.DebitWeiPerWorkUnit, big.NewInt(minWorkUnits))
+	return SufficientBalanceResult{
+		Sufficient: bal.Cmp(min) >= 0,
+		BalanceWei: new(big.Int).Set(bal),
+	}, nil
+}
+
+func (f *Fake) CloseSession(_ context.Context, sender []byte, workID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.CloseSessionCalls++
+	f.LastCloseSessionWorkID = workID
+	if f.CloseSessionError != nil {
+		return f.CloseSessionError
+	}
+	delete(f.balances, balanceKey(sender, workID))
+	return nil
 }
 
 // BalanceFor returns the current balance for a (sender, workID) pair.

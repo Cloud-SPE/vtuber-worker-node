@@ -89,3 +89,16 @@ type TicketExpirationParams struct {
 	CreationRound          int64
 	CreationRoundBlockHash []byte
 }
+
+// SufficientBalanceResult is the domain projection of
+// paymentsv1.SufficientBalanceResponse.
+type SufficientBalanceResult struct {
+	// Sufficient is true when (sender, workID) has at least the
+	// caller-supplied minWorkUnits of remaining balance. The streaming-
+	// session-payment pattern uses this as a watermark check between
+	// Debit ticks; see livepeer-payment-library/docs/design-docs/
+	// streaming-session-pattern.md.
+	Sufficient bool
+	// BalanceWei is the sender's current balance.
+	BalanceWei *big.Int
+}

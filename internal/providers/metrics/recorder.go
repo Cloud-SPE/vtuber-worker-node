@@ -123,8 +123,13 @@ const (
 	// method — daemon RPC
 	MethodProcessPayment    = "ProcessPayment"
 	MethodDebitBalance      = "DebitBalance"
+	MethodSufficientBalance = "SufficientBalance"
+	MethodCloseSession      = "CloseSession"
 	MethodGetQuote          = "GetQuote"
 	MethodListCapabilities  = "ListCapabilities"
+
+	// unit — streaming session work
+	UnitSecond = "second"
 
 	// error_class — backend HTTP
 	BackendErrorTimeout   = "timeout"

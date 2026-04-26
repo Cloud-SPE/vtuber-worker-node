@@ -64,6 +64,33 @@ worker:
   # YAML exists to prevent.
   verify_daemon_consistency_on_start: true
 
+  # ─── Service-registry publisher (optional) ─────────────────────────
+  # When this section is present, the worker dials a co-located
+  # livepeer-service-registry publisher daemon at startup and runs
+  # BuildManifest → SignManifest → atomic write to manifest_out_path.
+  # The operator's HTTPS server (Caddy/nginx) serves that file at
+  # `https://<service_uri>/.well-known/livepeer-registry.json`.
+  #
+  # On-chain `setServiceURI` is gated by allow_on_chain_writes; default
+  # off. Production operators flip it on once per deploy after testing
+  # the off-chain manifest is reachable.
+  #
+  # See livepeer-service-registry/docs/design-docs/grpc-surface.md and
+  # livepeer-vtuber-project/docs/design-docs/decisions/009-vtuber-leads-
+  # service-registry-adoption.md for context.
+  #
+  # Comment this entire block out for dev compose stacks that run the
+  # resolver in static-overlay-only mode (no chain).
+  #
+  # service_registry_publisher:
+  #   publisher_daemon_socket: /var/run/livepeer/registry/publisher.sock
+  #   manifest_out_path: /var/www/livepeer/.well-known/livepeer-registry.json
+  #   operator_eth_address: "0xREPLACE_WITH_OPERATOR_ETH_ADDRESS"
+  #   node_id: "REPLACE_WITH_NODE_ID"            # operator-chosen mnemonic
+  #   node_url: "https://REPLACE_WITH_NODE_HOST:8080"
+  #   allow_on_chain_writes: false               # flip true to write setServiceURI
+  #   service_uri: "https://REPLACE_WITH_OPERATOR_HOST"
+
 # ─── Shared section ─────────────────────────────────────────────────────
 # Both daemon and worker parse these. Prices = wei per work-unit. The
 # daemon advertises them via GetQuote; the worker advertises the same
@@ -78,14 +105,12 @@ capabilities:
     # and ADR-006 in livepeer-vtuber-project for the cadence/grace defaults.
     work_unit: second
 
-    # ─── Streaming-only fields (M5 of vtuber-worker-node-bootstrap) ──────
-    # NOT YET PARSED — these fields land in M5 of the bootstrap plan and
-    # currently get ignored by the loader. Documented here so operators
-    # who land on this file later see the intended shape.
-    #
-    # debit_cadence_seconds: 5            # how often paymentSession.Debit fires
-    # sufficient_min_runway_seconds: 30   # threshold for emitting session.balance.low
-    # sufficient_grace_seconds: 60        # how long after low-balance before fatal close
+    # ─── Streaming-only fields ───────────────────────────────────────────
+    # All optional; zero/absent means the consumer module's default
+    # (5s / 30s / 60s, matching ADR-006 in livepeer-vtuber-project).
+    debit_cadence_seconds: 5
+    sufficient_min_runway_seconds: 30
+    sufficient_grace_seconds: 60
 
     models:
       # GROWTH-PHASE DEFAULT — bridge keeps ~90% of revenue while
