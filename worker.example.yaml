@@ -1,0 +1,116 @@
+# Annotated worker.yaml — vtuber-session capability on Arbitrum One mainnet.
+#
+# Shared between livepeer-payment-library (receiver mode) and this
+# vtuber-worker-node. Both parse independently at startup; mismatch is
+# a fail-closed condition.
+#
+# Contract: livepeer-payment-library/docs/design-docs/shared-yaml.md
+#
+# Copy this file to worker.yaml at the repo root (gitignored), edit the
+# REPLACE_* placeholders, and let compose.prod.yaml mount it at
+# /etc/livepeer/worker.yaml inside both containers.
+
+protocol_version: 1
+
+# ─── Daemon-only section ─────────────────────────────────────────────────
+# Parsed by livepeer-payment-library daemon. Ignored by vtuber-worker-node.
+payment_daemon:
+  grpc_listen: unix:///var/run/livepeer/payment-daemon.sock
+
+  # The Ethereum address that receives tickets. MUST be:
+  #   - the same address the keystore in compose's RECIPIENT_KEYSTORE_PATH
+  #     decrypts to;
+  #   - a registered orchestrator on Arbitrum One BondingManager
+  #     (otherwise tickets accumulate but never redeem profitably);
+  #   - the same address this operator's livepeer-service-registry
+  #     publisher signs the manifest under.
+  recipient_eth_address: "0xREPLACE_WITH_RECIPIENT_ETH_ADDRESS"
+
+  broker:
+    # Production = ethereum (real on-chain TicketBroker). `fake` is an
+    # in-memory fake for local dev / CI; never use it on mainnet.
+    mode: ethereum
+    rpc_url: "https://arb1.arbitrum.io/rpc"
+    # Arbitrum One TicketBroker. Hardcoded by Livepeer; only change if
+    # you're on a fork.
+    ticket_broker_contract: "0xa8bB618B1520E284046F3dFc448851A1Ff26e41B"
+
+  keystore:
+    path: /etc/livepeer/keystore.json
+    # compose.prod.yaml passes the password file via the daemon's
+    # --keystore-password-file flag, so this setting is informational
+    # unless you run the daemon outside compose.
+    passphrase_env: LIVEPEER_KEYSTORE_PASSPHRASE
+
+  store:
+    kind: bolt
+    path: /var/lib/livepeer/payment-daemon.db
+
+# ─── Worker-only section ────────────────────────────────────────────────
+# Parsed by vtuber-worker-node. Ignored by livepeer-payment-library daemon.
+worker:
+  http_listen: "0.0.0.0:8080"
+  payment_daemon_socket: /var/run/livepeer/payment-daemon.sock
+  # Cap on simultaneous in-flight paid sessions. Each vtuber-session
+  # holds one Chromium + one VRM render + one PyAV mux on the
+  # session-runner backend (≈ 1 GB VRAM, 1.2 cores per session at
+  # 1080p30 — see livepeer-vtuber-project/docs/design-docs/avatar-renderer.md
+  # resource budget table). Size to GPU capacity, not arbitrary high.
+  max_concurrent_requests: 1
+
+  # Cross-check this YAML against the daemon's ListCapabilities at
+  # startup; refuse to serve if the catalogs diverge. Always true in
+  # production — disabling re-opens the drift class of bugs the shared
+  # YAML exists to prevent.
+  verify_daemon_consistency_on_start: true
+
+# ─── Shared section ─────────────────────────────────────────────────────
+# Both daemon and worker parse these. Prices = wei per work-unit. The
+# daemon advertises them via GetQuote; the worker advertises the same
+# values on its HTTP /capabilities endpoint, instantiates the matching
+# StreamingModule, and forwards session-open requests to the backend_url
+# (which is the local session-runner).
+capabilities:
+  - capability: "livepeer:vtuber-session"
+    # Streaming sessions meter on wall-clock seconds, not tokens.
+    # `paymentSession.Debit(units)` is called every 5s with units = 5.
+    # See: livepeer-payment-library/docs/design-docs/streaming-session-pattern.md
+    # and ADR-006 in livepeer-vtuber-project for the cadence/grace defaults.
+    work_unit: second
+
+    # ─── Streaming-only fields (M5 of vtuber-worker-node-bootstrap) ──────
+    # NOT YET PARSED — these fields land in M5 of the bootstrap plan and
+    # currently get ignored by the loader. Documented here so operators
+    # who land on this file later see the intended shape.
+    #
+    # debit_cadence_seconds: 5            # how often paymentSession.Debit fires
+    # sufficient_min_runway_seconds: 30   # threshold for emitting session.balance.low
+    # sufficient_grace_seconds: 60        # how long after low-balance before fatal close
+
+    models:
+      # GROWTH-PHASE DEFAULT — bridge keeps ~90% of revenue while
+      # building a customer base. Real economics:
+      #   1 second of vtuber session ≈ 1 GB-VRAM-second × $0.30/hr GPU
+      #     ≈ $0.0001/sec ≈ 25 nwei/sec at $4000/ETH.
+      #   Bridge bills customers ~$0.10/min ($0.00167/sec).
+      # 6250 wei/sec leaves a healthy spread for the bridge while
+      # exceeding break-even at typical cloud GPU rates. Tune per
+      # measured demand.
+      - model: "vtuber-default-1080p30"
+        price_per_work_unit_wei: "6250"
+        # The session-runner's worker-facing HTTP endpoint. Co-deployed
+        # with this binary — see compose.prod.yaml. Update host if you
+        # split the runner onto a different machine.
+        backend_url: "http://REPLACE_WITH_SESSION_RUNNER_HOST:8080"
+
+      # Example of a premium tier — higher resolution / FPS / different
+      # GPU class. The constraints blob is informational; the registry
+      # resolver Select can filter on it.
+      #
+      # - model: "vtuber-premium-1440p60"
+      #   price_per_work_unit_wei: "18750"
+      #   backend_url: "http://REPLACE_WITH_SESSION_RUNNER_HOST:8080"
+      #   constraints:
+      #     gpu_class: "a100-40gb"
+      #     resolution: "1440p"
+      #     fps: 60

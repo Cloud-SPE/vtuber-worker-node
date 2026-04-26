@@ -1,0 +1,25 @@
+# Binaries
+/openai-worker-node
+/bin/
+/dist/
+
+# Go
+*.test
+*.out
+coverage.txt
+coverage.out
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+
+# Local config / secrets
+.env
+.env.local
+worker.yaml
+!worker.example.yaml

@@ -1,0 +1,19 @@
+name: doc-lint
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  doc-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: doc-lint
+        # Placeholder until the doc-gardener lint is ported from the
+        # sibling library (see lint/README.md). Non-blocking.
+        run: |
+          echo "doc-lint: placeholder — real checks land when lint/doc-gardener is ported"

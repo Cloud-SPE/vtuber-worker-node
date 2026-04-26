@@ -1,0 +1,107 @@
+# Production worker-side stack.
+#
+# Standalone — paste into Portainer as a single Stack, or run:
+#   docker compose -f compose.prod.yaml --env-file .env up -d
+#
+# Two services:
+#   - payment-daemon  (receiver mode, Arbitrum One mainnet)
+#   - openai-worker   (HTTP server, talks to your Ollama backend)
+#
+# Ingress:
+#   Cloudflare Tunnel hits `openai-worker:8080` directly. If
+#   cloudflared runs as a docker container, attach it to the
+#   `cf-tunnel` external network defined below. If cloudflared runs
+#   on the host (systemd / package install), use the published port
+#   below (host:8080).
+#
+# See docs/operations/running-with-docker.md for the full walkthrough.
+
+name: livepeer-worker
+
+services:
+  payment-daemon:
+    image: tztcloud/livepeer-payment-daemon:v0.8.10
+    restart: unless-stopped
+    command:
+      - --mode=receiver
+      - --socket=/var/run/livepeer/payment-daemon.sock
+      - --store-path=/var/lib/livepeer/payment-daemon.db
+      - --config=/etc/livepeer/worker.yaml
+      - --chain-rpc=${CHAIN_RPC:?set CHAIN_RPC (Arbitrum One mainnet RPC URL)}
+      - --keystore-path=/etc/livepeer/keystore.json
+      - --keystore-password-file=/etc/livepeer/keystore-password
+      - --redemption-interval=30s
+      - --log-level=${DAEMON_LOG_LEVEL:-info}
+    volumes:
+      - ${WORKER_YAML_PATH:-./worker.yaml}:/etc/livepeer/worker.yaml:ro
+      - ${RECIPIENT_KEYSTORE_PATH:-./keystore.json}:/etc/livepeer/keystore.json:ro
+      - ${RECIPIENT_KEYSTORE_PASSWORD_PATH:-./keystore-password}:/etc/livepeer/keystore-password:ro
+      - payment-daemon-sock:/var/run/livepeer
+      - payment-daemon-data:/var/lib/livepeer
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512m
+    security_opt:
+      - no-new-privileges:true
+
+  openai-worker:
+    image: tztcloud/livepeer-vtuber-worker-node:v0.8.10
+    restart: unless-stopped
+    depends_on:
+      - payment-daemon
+    command:
+      - --config=/etc/livepeer/worker.yaml
+      - --log-level=${WORKER_LOG_LEVEL:-info}
+      # METRICS_PORT (default empty) enables the Prometheus /metrics
+      # listener inside the container. See .env.example + docs/operations
+      # /running-with-docker.md#observability.
+      - --metrics-listen=${METRICS_PORT:+:${METRICS_PORT}}
+    volumes:
+      - ${WORKER_YAML_PATH:-./worker.yaml}:/etc/livepeer/worker.yaml:ro
+      - payment-daemon-sock:/var/run/livepeer:ro
+    ports:
+      # Published to the host so cloudflared (if running outside docker)
+      # can hit it via http://<vps-ip>:${WORKER_HOST_PORT}. Drop this
+      # block if cloudflared shares the cf-tunnel network and reaches
+      # the container by name.
+      - '${WORKER_HOST_PORT:-8080}:8080'
+      # Metrics port — published only when METRICS_PORT is set in .env.
+      # Bind to 127.0.0.1 if you only want a local Prometheus scraper to
+      # reach it (recommended); leave bare for cluster-wide scraping.
+      # Uncomment after setting METRICS_PORT in .env:
+      #   - '127.0.0.1:${METRICS_PORT}:${METRICS_PORT}'
+    networks:
+      - default
+      - cf-tunnel
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1g
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  payment-daemon-sock:
+  payment-daemon-data:
+
+networks:
+  default:
+  # External network shared with cloudflared's stack. The cloudflared
+  # tunnel config can then point at `http://openai-worker:8080`. Create
+  # it once on the VPS (`docker network create cf-tunnel`) before the
+  # first `up`.
+  cf-tunnel:
+    external: true

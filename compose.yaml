@@ -1,0 +1,64 @@
+# Dev-friendly compose for the worker + payment daemon duo. Both
+# containers read the SAME worker.yaml via a read-only bind mount at
+# /etc/livepeer/worker.yaml.
+#
+# Production deployments will:
+#   - Drop the `additional_contexts` block (the library will be a
+#     tagged Go module, not a sibling checkout).
+#   - Replace the fake broker mode with real `--chain-rpc` +
+#     `--keystore-path`.
+#   - Point backend_url entries at actual inference servers.
+#
+# Bring it up with:
+#   docker compose up --build
+#
+# Then hit the worker:
+#   curl http://localhost:8080/health
+#   curl http://localhost:8080/capabilities
+
+services:
+  payment-daemon:
+    # Built from the sibling repo. Assumes you've checked out
+    # livepeer-payment-library as a sibling of vtuber-worker-node.
+    build:
+      context: ../livepeer-payment-library
+    command:
+      - "--mode=receiver"
+      - "--socket=/var/run/livepeer/payment-daemon.sock"
+      - "--store-path=/var/lib/livepeer/payment-daemon.db"
+      - "--config=/etc/livepeer/worker.yaml"
+      - "--log-level=info"
+    volumes:
+      - ./worker.yaml:/etc/livepeer/worker.yaml:ro
+      - payment-daemon-sock:/var/run/livepeer
+      - payment-daemon-data:/var/lib/livepeer
+    restart: unless-stopped
+
+  openai-worker:
+    build:
+      # Default context = this repo.
+      context: .
+      # Expose the sibling library repo to the build. Required while
+      # the go.mod has a `replace` directive; drops out once library
+      # is tagged.
+      additional_contexts:
+        library: ../livepeer-payment-library
+    command:
+      - "--config=/etc/livepeer/worker.yaml"
+      - "--log-level=info"
+      # METRICS_PORT activates the Prometheus /metrics listener inside
+      # the container. Set in .env (or shell) to e.g. 9093 to enable;
+      # when unset the flag is empty and the listener stays off.
+      - "--metrics-listen=${METRICS_PORT:+:${METRICS_PORT}}"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./worker.yaml:/etc/livepeer/worker.yaml:ro
+      - payment-daemon-sock:/var/run/livepeer:ro
+    depends_on:
+      - payment-daemon
+    restart: unless-stopped
+
+volumes:
+  payment-daemon-sock:
+  payment-daemon-data:
