@@ -15,7 +15,7 @@ import (
 
 // Capability is the canonical capability string this module serves.
 // Matches the example in
-// livepeer-service-registry/docs/design-docs/workload-agnostic-strings.md
+// livepeer-modules-project/service-registry-daemon/docs/design-docs/workload-agnostic-strings.md
 // and is what worker.yaml advertises.
 const Capability types.CapabilityID = "livepeer:vtuber-session"
 

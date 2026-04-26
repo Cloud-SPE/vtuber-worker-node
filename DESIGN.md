@@ -4,7 +4,7 @@ This file is intentionally short. The full design lives upstream at [`livepeer-v
 
 ## One-paragraph summary
 
-`vtuber-worker-node` terminates session-open requests from `vtuber-livepeer-bridge`, validates the attached payment via a co-located [`livepeer-payment-library`](https://github.com/Cloud-SPE/livepeer-payment-library) receiver daemon, instantiates a `StreamingModule` for the requested capability, and forwards to the local [`session-runner`](https://github.com/Cloud-SPE/livepeer-vtuber-project/tree/main/session-runner) backend over localhost HTTP. The module owns the session lifetime: it debits balance every 5s via `paymentSession.Debit`, emits `session.balance.low` on the WebSocket back to the bridge if `paymentSession.Sufficient` returns false, and calls `paymentSession.Close` exactly once before returning.
+`vtuber-worker-node` terminates session-open requests from `vtuber-livepeer-bridge`, validates the attached payment via a co-located [`livepeer-modules-project/payment-daemon`](https://github.com/Cloud-SPE/livepeer-modules-project/tree/main/payment-daemon) receiver daemon, instantiates a `StreamingModule` for the requested capability, and forwards to the local [`session-runner`](https://github.com/Cloud-SPE/livepeer-vtuber-project/tree/main/session-runner) backend over localhost HTTP. The module owns the session lifetime: it debits balance every 5s via `paymentSession.Debit`, emits `session.balance.low` on the WebSocket back to the bridge if `paymentSession.Sufficient` returns false, and calls `paymentSession.Close` exactly once before returning.
 
 ## Position in the stack
 
@@ -13,9 +13,9 @@ vtuber-livepeer-bridge (sibling repo)
    ↓ POST /api/sessions/start, Bearer customer key, Payment header
 vtuber-worker-node (this repo)
    ├─ unix-socket gRPC ↓
-   │   livepeer-payment-library (receiver daemon, sidecar)
+   │   payment-daemon (receiver daemon, sidecar)
    ├─ unix-socket gRPC ↓
-   │   livepeer-service-registry (publisher daemon, sidecar)
+   │   service-registry-daemon (publisher daemon, sidecar)
    └─ HTTP localhost ↓
        session-runner (livepeer-vtuber-project)
 ```
@@ -41,7 +41,7 @@ The custom analyzer `lint/payment-middleware-check` enforces that capability mod
 
 - [System architecture overview](https://github.com/Cloud-SPE/livepeer-vtuber-project/blob/main/docs/design-docs/architecture-overview.md)
 - [`StreamingModule` interface + lifecycle + state machine](https://github.com/Cloud-SPE/livepeer-vtuber-project/blob/main/docs/design-docs/streaming-session-module.md)
-- [Streaming-session payment pattern](https://github.com/Cloud-SPE/livepeer-payment-library/blob/main/docs/design-docs/streaming-session-pattern.md) — payment-library's recipe this module composes from
+- [Streaming-session payment pattern](https://github.com/Cloud-SPE/livepeer-modules-project/blob/main/payment-daemon/docs/design-docs/streaming-session-pattern.md) — payment-library's recipe this module composes from
 - [ADRs](https://github.com/Cloud-SPE/livepeer-vtuber-project/tree/main/docs/design-docs/decisions)
 - [Cross-repo conventions](https://github.com/Cloud-SPE/livepeer-modules-conventions) (metrics naming, port allocations)
 
@@ -55,4 +55,4 @@ The custom analyzer `lint/payment-middleware-check` enforces that capability mod
 | Service-registry publisher | not yet (deferred per [ADR-009](https://github.com/Cloud-SPE/livepeer-vtuber-project/blob/main/docs/design-docs/decisions/009-vtuber-leads-service-registry-adoption.md)) | co-located from day one |
 | Tokenizer | bundled (tiktoken) | not used (work-unit is `second`, not `token`) |
 
-Both repos share `livepeer-payment-library` (receiver mode) and the `worker.yaml` schema.
+Both repos share `livepeer-modules-project/payment-daemon` (receiver mode) and the `worker.yaml` schema.

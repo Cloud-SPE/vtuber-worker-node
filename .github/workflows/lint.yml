@@ -14,7 +14,7 @@ jobs:
           go-version: '1.25'
       - uses: golangci/golangci-lint-action@v6
         with:
-          # Match sibling livepeer-payment-library pin. Bump with a
+          # Match sibling payment-daemon pin. Bump with a
           # re-triage commit; don't chase `latest`.
           version: v1.64.8
 

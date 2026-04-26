@@ -23,7 +23,7 @@ import (
 //	livepeer-vtuber-project/docs/design-docs/streaming-session-module.md
 //
 // Underlying primitives (ProcessPayment, DebitBalance, SufficientBalance,
-// CloseSession) live in livepeer-payment-library — see its
+// CloseSession) live in payment-daemon — see its
 // streaming-session-pattern.md for the recipe this interface composes.
 type StreamingModule interface {
 	// Capability returns the canonical capability string this module
@@ -77,7 +77,7 @@ type StreamingModule interface {
 // one PaymentSession per session-open and passes it into Serve.
 //
 // PaymentSession wraps the receiver-side gRPC client of
-// livepeer-payment-library (see internal/providers/payeedaemon for the
+// payment-daemon (see internal/providers/payeedaemon for the
 // underlying client). Modules MUST NOT bypass PaymentSession to talk
 // to the daemon directly — the wrapper is the seam that the
 // payment-middleware-check linter enforces.

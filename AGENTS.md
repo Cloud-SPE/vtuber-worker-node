@@ -4,7 +4,7 @@ Map for agents working in this repo. Keep under ~150 lines.
 
 ## What this repo is
 
-The payee-side adapter for the **`livepeer:vtuber-session`** capability. Hosts the [`StreamingModule`](https://github.com/Cloud-SPE/livepeer-vtuber-project/blob/main/docs/design-docs/streaming-session-module.md) interface, runs payment middleware via a co-located [`livepeer-payment-library`](https://github.com/Cloud-SPE/livepeer-payment-library) receiver daemon, publishes its capability via [`livepeer-service-registry`](https://github.com/Cloud-SPE/livepeer-service-registry), forwards session-open requests to its local [`session-runner`](https://github.com/Cloud-SPE/livepeer-vtuber-project/tree/main/session-runner) backend.
+The payee-side adapter for the **`livepeer:vtuber-session`** capability. Hosts the [`StreamingModule`](https://github.com/Cloud-SPE/livepeer-vtuber-project/blob/main/docs/design-docs/streaming-session-module.md) interface, runs payment middleware via a co-located [`livepeer-modules-project/payment-daemon`](https://github.com/Cloud-SPE/livepeer-modules-project/tree/main/payment-daemon) receiver daemon, publishes its capability via [`livepeer-modules-project/service-registry-daemon`](https://github.com/Cloud-SPE/livepeer-modules-project/tree/main/service-registry-daemon), forwards session-open requests to its local [`session-runner`](https://github.com/Cloud-SPE/livepeer-vtuber-project/tree/main/session-runner) backend.
 
 Sibling of [`openai-worker-node`](https://github.com/Cloud-SPE/openai-worker-node) — structurally shaped after it; no shared source. See [ADR-003](https://github.com/Cloud-SPE/livepeer-vtuber-project/blob/main/docs/design-docs/decisions/003-sibling-project-integration.md) for the integration shape.
 

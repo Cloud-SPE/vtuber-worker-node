@@ -18,10 +18,14 @@
 
 services:
   payment-daemon:
-    # Built from the sibling repo. Assumes you've checked out
-    # livepeer-payment-library as a sibling of vtuber-worker-node.
-    build:
-      context: ../livepeer-payment-library
+    # Pinned to the published image. The new-lineage source-of-truth
+    # is livepeer-modules-project/payment-daemon (its plan 0002), but
+    # the daemon Dockerfile there has a chain-commons-context gap;
+    # the published `tztcloud/livepeer-payment-daemon` image (cut from
+    # the standalone repo before it was folded) is what actually runs
+    # in dev. Switch to a new-lineage image tag is one env-var change
+    # once livepeer-modules-project's plan 0008 publishes.
+    image: tztcloud/livepeer-payment-daemon:${PAYMENT_DAEMON_IMAGE_TAG:-v0.8.10}
     command:
       - "--mode=receiver"
       - "--socket=/var/run/livepeer/payment-daemon.sock"
@@ -34,7 +38,7 @@ services:
       - payment-daemon-data:/var/lib/livepeer
     restart: unless-stopped
 
-  openai-worker:
+  vtuber-worker:
     build:
       # Default context = this repo.
       context: .

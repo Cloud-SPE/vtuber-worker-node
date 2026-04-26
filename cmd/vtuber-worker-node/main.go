@@ -356,7 +356,7 @@ func missingCapabilityModules(mux *rthttp.Mux, cfg *config.Config) []types.Capab
 }
 
 // publishManifest runs the BuildSignWrite startup flow against the
-// co-located livepeer-service-registry publisher daemon. Called from
+// co-located service-registry-daemon publisher daemon. Called from
 // main when worker.service_registry_publisher is non-nil. Errors are
 // fatal — refusing to start when the manifest can't be published is
 // safer than running with a stale on-disk file.

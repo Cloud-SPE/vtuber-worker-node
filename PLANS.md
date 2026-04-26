@@ -16,7 +16,7 @@ Index of execution plans against this repo. Plans are first-class artifacts chec
 
 ## How plans work
 
-Same convention as siblings (`openai-worker-node`, `livepeer-payment-library`):
+Same convention as siblings (`openai-worker-node`, `livepeer-modules-project/payment-daemon`):
 
 ```markdown
 ---

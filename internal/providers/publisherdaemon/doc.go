@@ -1,5 +1,5 @@
 // Package publisherdaemon is the worker's gRPC client for the
-// co-located livepeer-service-registry publisher daemon.
+// co-located service-registry-daemon publisher daemon.
 //
 // On worker startup, the runtime calls BuildSignWrite to:
 //
@@ -22,8 +22,8 @@
 //
 // Canonical references:
 //
-//	livepeer-service-registry/docs/design-docs/grpc-surface.md
-//	livepeer-service-registry/docs/design-docs/manifest-schema.md
+//	livepeer-modules-project/service-registry-daemon/docs/design-docs/grpc-surface.md
+//	livepeer-modules-project/service-registry-daemon/docs/design-docs/manifest-schema.md
 //	livepeer-vtuber-project/docs/design-docs/decisions/009-vtuber-leads-service-registry-adoption.md
 //
 // The full operator workflow (CI manifest validation, multi-capability

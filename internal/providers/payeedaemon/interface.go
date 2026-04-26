@@ -48,7 +48,7 @@ type Client interface {
 	// least minWorkUnits of remaining balance. Cheap; does not modify
 	// balance. Used by streaming-session modules between Debit ticks
 	// to detect a low-balance state without paying for a debit-then-
-	// refund cycle. See livepeer-payment-library/docs/design-docs/
+	// refund cycle. See livepeer-modules-project/payment-daemon/docs/design-docs/
 	// streaming-session-pattern.md.
 	SufficientBalance(ctx context.Context, sender []byte, workID string, minWorkUnits int64) (SufficientBalanceResult, error)
 

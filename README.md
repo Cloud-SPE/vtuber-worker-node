@@ -1,6 +1,6 @@
 # vtuber-worker-node
 
-Payee-side HTTP adapter for the **`livepeer:vtuber-session`** capability. Hosts the [`StreamingModule`](https://github.com/Cloud-SPE/livepeer-vtuber-project/blob/main/docs/design-docs/streaming-session-module.md) interface, runs the payment middleware via a co-located [`livepeer-payment-library`](https://github.com/Cloud-SPE/livepeer-payment-library) receiver daemon, publishes its capability via a co-located [`livepeer-service-registry`](https://github.com/Cloud-SPE/livepeer-service-registry) publisher daemon, and forwards session-open requests to its local [`session-runner`](https://github.com/Cloud-SPE/livepeer-vtuber-project/tree/main/session-runner) backend.
+Payee-side HTTP adapter for the **`livepeer:vtuber-session`** capability. Hosts the [`StreamingModule`](https://github.com/Cloud-SPE/livepeer-vtuber-project/blob/main/docs/design-docs/streaming-session-module.md) interface, runs the payment middleware via a co-located [`livepeer-modules-project/payment-daemon`](https://github.com/Cloud-SPE/livepeer-modules-project/tree/main/payment-daemon) receiver daemon, publishes its capability via a co-located [`livepeer-modules-project/service-registry-daemon`](https://github.com/Cloud-SPE/livepeer-modules-project/tree/main/service-registry-daemon) publisher daemon, and forwards session-open requests to its local [`session-runner`](https://github.com/Cloud-SPE/livepeer-vtuber-project/tree/main/session-runner) backend.
 
 Sibling repo of [`openai-worker-node`](https://github.com/Cloud-SPE/openai-worker-node); structurally shaped after it. Per [ADR-003 in livepeer-vtuber-project](https://github.com/Cloud-SPE/livepeer-vtuber-project/blob/main/docs/design-docs/decisions/003-sibling-project-integration.md), the two repos share no source code — common patterns are documented in the [shared-patterns table](https://github.com/Cloud-SPE/livepeer-vtuber-project/blob/main/docs/design-docs/sibling-integration.md).
 
@@ -17,7 +17,7 @@ internal/
   providers/
     backendhttp/           # HTTP client to the local session-runner backend
     metrics/               # Prometheus recorder + Noop recorder
-    payeedaemon/           # gRPC client to livepeer-payment-library (receiver mode)
+    payeedaemon/           # gRPC client to payment-daemon (receiver mode)
   runtime/
     http/                  # mux + payment middleware
     metrics/               # /metrics listener

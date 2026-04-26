@@ -1,10 +1,10 @@
 # Annotated worker.yaml — vtuber-session capability on Arbitrum One mainnet.
 #
-# Shared between livepeer-payment-library (receiver mode) and this
+# Shared between payment-daemon (receiver mode) and this
 # vtuber-worker-node. Both parse independently at startup; mismatch is
 # a fail-closed condition.
 #
-# Contract: livepeer-payment-library/docs/design-docs/shared-yaml.md
+# Contract: livepeer-modules-project/payment-daemon/docs/design-docs/shared-yaml.md
 #
 # Copy this file to worker.yaml at the repo root (gitignored), edit the
 # REPLACE_* placeholders, and let compose.prod.yaml mount it at
@@ -13,7 +13,7 @@
 protocol_version: 1
 
 # ─── Daemon-only section ─────────────────────────────────────────────────
-# Parsed by livepeer-payment-library daemon. Ignored by vtuber-worker-node.
+# Parsed by payment-daemon daemon. Ignored by vtuber-worker-node.
 payment_daemon:
   grpc_listen: unix:///var/run/livepeer/payment-daemon.sock
 
@@ -22,7 +22,7 @@ payment_daemon:
   #     decrypts to;
   #   - a registered orchestrator on Arbitrum One BondingManager
   #     (otherwise tickets accumulate but never redeem profitably);
-  #   - the same address this operator's livepeer-service-registry
+  #   - the same address this operator's service-registry-daemon
   #     publisher signs the manifest under.
   recipient_eth_address: "0xREPLACE_WITH_RECIPIENT_ETH_ADDRESS"
 
@@ -47,7 +47,7 @@ payment_daemon:
     path: /var/lib/livepeer/payment-daemon.db
 
 # ─── Worker-only section ────────────────────────────────────────────────
-# Parsed by vtuber-worker-node. Ignored by livepeer-payment-library daemon.
+# Parsed by vtuber-worker-node. Ignored by payment-daemon daemon.
 worker:
   http_listen: "0.0.0.0:8080"
   payment_daemon_socket: /var/run/livepeer/payment-daemon.sock
@@ -66,7 +66,7 @@ worker:
 
   # ─── Service-registry publisher (optional) ─────────────────────────
   # When this section is present, the worker dials a co-located
-  # livepeer-service-registry publisher daemon at startup and runs
+  # service-registry-daemon publisher daemon at startup and runs
   # BuildManifest → SignManifest → atomic write to manifest_out_path.
   # The operator's HTTPS server (Caddy/nginx) serves that file at
   # `https://<service_uri>/.well-known/livepeer-registry.json`.
@@ -75,7 +75,7 @@ worker:
   # off. Production operators flip it on once per deploy after testing
   # the off-chain manifest is reachable.
   #
-  # See livepeer-service-registry/docs/design-docs/grpc-surface.md and
+  # See livepeer-modules-project/service-registry-daemon/docs/design-docs/grpc-surface.md and
   # livepeer-vtuber-project/docs/design-docs/decisions/009-vtuber-leads-
   # service-registry-adoption.md for context.
   #
@@ -101,7 +101,7 @@ capabilities:
   - capability: "livepeer:vtuber-session"
     # Streaming sessions meter on wall-clock seconds, not tokens.
     # `paymentSession.Debit(units)` is called every 5s with units = 5.
-    # See: livepeer-payment-library/docs/design-docs/streaming-session-pattern.md
+    # See: livepeer-modules-project/payment-daemon/docs/design-docs/streaming-session-pattern.md
     # and ADR-006 in livepeer-vtuber-project for the cadence/grace defaults.
     work_unit: second
 

@@ -1,5 +1,5 @@
 // Package config loads and projects the shared worker.yaml into the
-// worker-specific form. It wraps livepeer-payment-library's
+// worker-specific form. It wraps payment-daemon's
 // config/sharedyaml package — strict parse + validate — and produces
 // a Config that models only the pieces the worker actually uses,
 // with a flat (capability, model)-indexed map over the capabilities
