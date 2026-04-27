@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"sync/atomic"
 )
 
@@ -90,11 +91,25 @@ func (h *HTTPBackend) OpenSession(ctx context.Context, req *http.Request, backen
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// Read up to 4 KiB of the backend's error body for diagnostics.
+		// Read up to 4 KiB of the backend's error body for diagnostics,
+		// then redact bearer-shaped substrings so a 422 echoing the
+		// inbound payload doesn't leak `vtbs_*` / `vtbsw_*` /
+		// `pl_egress_*` / `lpgw_stream_*` into operator logs.
 		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
-		return fmt.Errorf("backend returned %d: %s", resp.StatusCode, string(errBody))
+		return fmt.Errorf("backend returned %d: %s", resp.StatusCode, redactBearers(string(errBody)))
 	}
 	return nil
+}
+
+// redactBearers replaces the tail of any bearer-shaped substring with
+// "<redacted>" so error bodies that echo the inbound request (e.g.
+// FastAPI's 422 detail.input) don't leak session tokens into logs.
+// Patterns mirror the project-wide redaction sweep in
+// scripts/dev/redaction-check.sh.
+var bearerPattern = regexp.MustCompile(`(vtbs_|vtbsw_|pl_egress_|lpgw_stream_)[A-Za-z0-9_\-]{6,}`)
+
+func redactBearers(s string) string {
+	return bearerPattern.ReplaceAllString(s, "${1}<redacted>")
 }
 
 // Close instructs the backend to tear down the session. Best-effort.

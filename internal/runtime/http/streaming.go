@@ -70,14 +70,23 @@ type streamingDeps struct {
 //     also Close).
 func streamingMiddleware(d streamingDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// 1. Concurrency cap (shared with one-shot paid routes).
+		// 1. Concurrency cap (shared with one-shot paid routes). The
+		// semaphore is released by the goroutine that runs the session
+		// — see step 7 — so it spans the session lifetime, not just
+		// the HTTP request.
 		select {
 		case d.sem <- struct{}{}:
 		default:
 			http.Error(w, "capacity_exhausted", http.StatusServiceUnavailable)
 			return
 		}
-		defer func() { <-d.sem }()
+		releaseSem := func() { <-d.sem }
+		semReleased := false
+		defer func() {
+			if !semReleased {
+				releaseSem()
+			}
+		}()
 
 		// 2. Read the body once; we forward it to the backend in
 		// module.Serve via the request, so we have to buffer + reset
@@ -119,28 +128,49 @@ func streamingMiddleware(d streamingDeps) http.HandlerFunc {
 
 		// 6. 202 Accepted to the bridge. The body echoes the work_id
 		// so the bridge can correlate this session against its own
-		// session-id space if needed.
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusAccepted)
-		_ = json.NewEncoder(w).Encode(map[string]string{
+		// session-id space if needed. We set Content-Length so the
+		// bridge's fetch resolves on the body bytes alone, without
+		// waiting for the connection to close (which only happens at
+		// session end).
+		respBody, err := json.Marshal(map[string]string{
 			"status":  "starting",
 			"work_id": workID,
 		})
-		// Ensure the response is on the wire before module.Serve blocks.
+		if err != nil {
+			http.Error(w, "internal: encode response: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		respBody = append(respBody, '\n')
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(respBody)))
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write(respBody)
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
 
-		// 7. Run the session. Serve blocks for the lifetime of the
-		// session. Errors are logged here for operator visibility;
-		// the customer-side surfacing (session.error, session.ended)
-		// is the module's responsibility via the bridge WebSocket.
-		if err := d.module.Serve(r.Context(), r, ps); err != nil {
-			d.logger.Warn("streaming: Serve returned error",
-				"capability", d.module.Capability(),
-				"work_id", workID,
-				"err", err)
-		}
+		// 7. Detach the session lifetime from the HTTP request. Run
+		// module.Serve in a goroutine so the HTTP response closes
+		// immediately after the 202 is on the wire, unblocking the
+		// bridge's session-create handler. Subsequent state flows
+		// over the bridge WebSocket the module opens (control_url
+		// in the request body); not over this HTTP response.
+		//
+		// Use context.WithoutCancel so the goroutine survives the
+		// HTTP request's context cancellation. The session's natural
+		// terminations (graceful close, fatal error, balance exhausted)
+		// drive shutdown via module.Serve's own paths.
+		sessionCtx := context.WithoutCancel(r.Context())
+		semReleased = true // ownership transfers to the goroutine
+		go func() {
+			defer releaseSem()
+			if err := d.module.Serve(sessionCtx, r, ps); err != nil {
+				d.logger.Warn("streaming: Serve returned error",
+					"capability", d.module.Capability(),
+					"work_id", workID,
+					"err", err)
+			}
+		}()
 	}
 }
 
