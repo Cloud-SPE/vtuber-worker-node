@@ -112,7 +112,7 @@ capabilities:
     sufficient_min_runway_seconds: 30
     sufficient_grace_seconds: 60
 
-    models:
+    offerings:
       # GROWTH-PHASE DEFAULT — bridge keeps ~90% of revenue while
       # building a customer base. Real economics:
       #   1 second of vtuber session ≈ 1 GB-VRAM-second × $0.30/hr GPU
@@ -121,7 +121,7 @@ capabilities:
       # 6250 wei/sec leaves a healthy spread for the bridge while
       # exceeding break-even at typical cloud GPU rates. Tune per
       # measured demand.
-      - model: "vtuber-default-1080p30"
+      - id: "vtuber-default-1080p30"
         price_per_work_unit_wei: "6250"
         # The session-runner's worker-facing HTTP endpoint. Co-deployed
         # with this binary — see compose.prod.yaml. Update host if you
@@ -132,7 +132,7 @@ capabilities:
       # GPU class. The constraints blob is informational; the registry
       # resolver Select can filter on it.
       #
-      # - model: "vtuber-premium-1440p60"
+      # - id: "vtuber-premium-1440p60"
       #   price_per_work_unit_wei: "18750"
       #   backend_url: "http://REPLACE_WITH_SESSION_RUNNER_HOST:8080"
       #   constraints:

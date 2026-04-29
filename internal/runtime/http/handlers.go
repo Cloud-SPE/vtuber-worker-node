@@ -87,8 +87,8 @@ func capabilitiesHandler(cfg *config.Config) http.HandlerFunc {
 			Capabilities:    make([]capabilityJSON, 0, len(cfg.Capabilities.Ordered)),
 		}
 		for _, c := range cfg.Capabilities.Ordered {
-			models := make([]modelJSON, 0, len(c.Models))
-			for _, m := range c.Models {
+			models := make([]modelJSON, 0, len(c.Offerings))
+			for _, m := range c.Offerings {
 				models = append(models, modelJSON{
 					Model:               string(m.Model),
 					PricePerWorkUnitWei: m.PricePerWorkUnitWei,
@@ -97,7 +97,7 @@ func capabilitiesHandler(cfg *config.Config) http.HandlerFunc {
 			out.Capabilities = append(out.Capabilities, capabilityJSON{
 				Capability: string(c.Capability),
 				WorkUnit:   string(c.WorkUnit),
-				Models:     models,
+				Offerings:  offerings,
 			})
 		}
 		_ = json.NewEncoder(w).Encode(out)
@@ -107,7 +107,7 @@ func capabilitiesHandler(cfg *config.Config) http.HandlerFunc {
 type capabilityJSON struct {
 	Capability string      `json:"capability"`
 	WorkUnit   string      `json:"work_unit"`
-	Models     []modelJSON `json:"models"`
+	Models     []modelJSON `json:"offerings"`
 }
 
 type modelJSON struct {

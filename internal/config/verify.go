@@ -36,10 +36,10 @@ func VerifyDaemonCatalog(cfg *Config, daemon payeedaemon.ListCapabilitiesResult)
 		if string(cfgCap.WorkUnit) != daemonCap.WorkUnit {
 			return fmt.Errorf("verify: capability[%d] (%q) work_unit mismatch: config=%q daemon=%q", i, cfgCap.Capability, cfgCap.WorkUnit, daemonCap.WorkUnit)
 		}
-		if got, want := len(daemonCap.Models), len(cfgCap.Models); got != want {
+		if got, want := len(daemonCap.Models), len(cfgCap.Offerings); got != want {
 			return fmt.Errorf("verify: capability[%d] (%q) model count mismatch: config=%d daemon=%d", i, cfgCap.Capability, want, got)
 		}
-		for j, cfgModel := range cfgCap.Models {
+		for j, cfgModel := range cfgCap.Offerings {
 			daemonModel := daemonCap.Models[j]
 			if string(cfgModel.Model) != daemonModel.Model {
 				return fmt.Errorf("verify: capability[%d] (%q) model[%d] name mismatch: config=%q daemon=%q", i, cfgCap.Capability, j, cfgModel.Model, daemonModel.Model)
