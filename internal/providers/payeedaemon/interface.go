@@ -24,12 +24,16 @@ type Client interface {
 	// own shared-YAML parse doesn't byte-match this response.
 	ListCapabilities(ctx context.Context) (ListCapabilitiesResult, error)
 
-	// GetQuote returns the daemon's TicketParams + per-model prices
-	// for a (sender, capability) pair. The worker's /quote and
-	// /quotes HTTP handlers proxy this call through to the bridge so
-	// the bridge can refresh its quote cache. NotFound is expected
-	// when the operator hasn't configured `capability`.
+	// GetQuote returns the daemon's TicketParams + per-offering prices
+	// for a (sender, capability) pair. The worker keeps this method so
+	// it remains wire-compatible with the daemon contract even though
+	// the canonical worker surface now uses GetTicketParams instead.
 	GetQuote(ctx context.Context, sender []byte, capability string) (GetQuoteResult, error)
+
+	// GetTicketParams returns canonical payee-issued ticket params for
+	// an exact sender / recipient / face-value tuple. The worker uses
+	// this only as a thin HTTP proxy for the gateway-side payment flow.
+	GetTicketParams(ctx context.Context, req GetTicketParamsRequest) (TicketParams, error)
 
 	// ProcessPayment validates a payment blob and credits the sender's
 	// balance. The workID identifies the session the credit posts to;
@@ -100,6 +104,18 @@ func (m *meteredClient) GetQuote(ctx context.Context, sender []byte, capability 
 	}
 	m.rec.IncDaemonRPC(metrics.MethodGetQuote, outcome)
 	m.rec.ObserveDaemonRPC(metrics.MethodGetQuote, outcome, time.Since(start))
+	return res, err
+}
+
+func (m *meteredClient) GetTicketParams(ctx context.Context, req GetTicketParamsRequest) (TicketParams, error) {
+	start := time.Now()
+	res, err := m.inner.GetTicketParams(ctx, req)
+	outcome := metrics.OutcomeOK
+	if err != nil {
+		outcome = metrics.OutcomeError
+	}
+	m.rec.IncDaemonRPC(metrics.MethodGetTicketParams, outcome)
+	m.rec.ObserveDaemonRPC(metrics.MethodGetTicketParams, outcome, time.Since(start))
 	return res, err
 }
 

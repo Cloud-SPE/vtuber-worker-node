@@ -135,19 +135,21 @@ var _ modules.StreamingModule = (*Module)(nil)
 // its own session value; the Module struct is shared (read-only) across
 // concurrent sessions.
 type session struct {
-	cfg       Config
-	sessionID string
-	ps        modules.PaymentSession
+	cfg             Config
+	sessionID       string
+	workerSessionID string
+	workID          string
+	ps              modules.PaymentSession
 
 	// Lifecycle state. Updated only from the main Serve goroutine.
-	cumulativeUnits uint64
-	debitSeq        uint64
+	cumulativeUnits          uint64
+	debitSeq                 uint64
 	consecutiveDebitFailures int
 
 	// Low-balance state. Once entered, stays low until a Sufficient
 	// returns true (refilled) or grace expires (fatal).
-	inLowBalance   bool
-	graceTimerCh   <-chan time.Time
+	inLowBalance bool
+	graceTimerCh <-chan time.Time
 
 	// Final reason, set by the goroutine that triggers shutdown.
 	endReasonMu sync.Mutex
@@ -200,9 +202,11 @@ func (m *Module) Serve(ctx context.Context, req *http.Request, ps modules.Paymen
 	logger.Info("vtuber_session: starting", "backend_url", cfg.BackendURL)
 
 	s := &session{
-		cfg:       cfg,
-		sessionID: sessionID,
-		ps:        ps,
+		cfg:             cfg,
+		sessionID:       sessionID,
+		workerSessionID: extractWorkerSessionID(req, sessionID),
+		workID:          extractWorkID(req),
+		ps:              ps,
 	}
 
 	// Close the PaymentSession on every exit path, including panic.
@@ -264,6 +268,23 @@ func extractSessionID(req *http.Request) string {
 		return id
 	}
 	return "unknown"
+}
+
+func extractWorkerSessionID(req *http.Request, fallback string) string {
+	if req == nil {
+		return fallback
+	}
+	if id := req.Header.Get("X-Vtuber-Worker-Session-Id"); id != "" {
+		return id
+	}
+	return fallback
+}
+
+func extractWorkID(req *http.Request) string {
+	if req == nil {
+		return ""
+	}
+	return req.Header.Get("X-Vtuber-Work-Id")
 }
 
 // runLoop drives the debit ticker and reacts to bridge inbound events
@@ -365,6 +386,9 @@ func (s *session) tick(ctx context.Context) error {
 	}
 	s.cumulativeUnits += units
 	s.emit(ctx, EventSessionUsageTick, UsageTickData{
+		WorkerSessionID:     s.workerSessionID,
+		WorkID:              s.workID,
+		UsageSeq:            s.debitSeq,
 		WorkUnits:           units,
 		WorkUnitKind:        "second",
 		CumulativeWorkUnits: s.cumulativeUnits,
@@ -438,7 +462,7 @@ func (s *session) enterLowBalance(ctx context.Context, balance int64) {
 	s.inLowBalance = true
 	s.graceTimerCh = s.cfg.Clock.After(s.cfg.GraceWindow)
 	s.emit(ctx, EventSessionBalanceLow, BalanceLowData{
-		RunwayUnitsRemaining: balance,
+		RunwaySecondsRemaining: balance,
 	})
 }
 
@@ -451,7 +475,9 @@ func (s *session) exitLowBalance(ctx context.Context) {
 	// exact balance — that's fine, the bridge translates units to
 	// USD on its side and uses its own threshold.
 	s.emit(ctx, EventSessionBalanceRefilled, BalanceRefilledData{
-		NewBalanceUnits: int64(s.cfg.RunwayMinUnits),
+		WorkerSessionID:         s.workerSessionID,
+		WorkID:                  s.workID,
+		NewBalanceRunwaySeconds: int64(s.cfg.RunwayMinUnits),
 	})
 }
 

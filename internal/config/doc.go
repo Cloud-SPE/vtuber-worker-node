@@ -1,9 +1,9 @@
-// Package config loads and projects the shared worker.yaml into the
-// worker-specific form. It wraps payment-daemon's
-// config/sharedyaml package — strict parse + validate — and produces
-// a Config that models only the pieces the worker actually uses,
-// with a flat (capability, model)-indexed map over the capabilities
-// block for O(1) routing.
+// Package config loads and projects worker.yaml into the worker-specific
+// form. The worker owns this parser and validation logic directly so it
+// consumes payment-daemon as a contract, not as an imported source
+// library, while still enforcing the shared YAML invariants it relies
+// on. The result is a Config with a flat (capability, offering)-indexed
+// map over the capabilities block for O(1) routing.
 //
 // It also owns the daemon-consistency cross-check: once the worker
 // dials the payee daemon and pulls ListCapabilities, call

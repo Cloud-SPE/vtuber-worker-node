@@ -20,6 +20,10 @@ type finding struct {
 	Path string
 }
 
+var allowedUnpaidV1Paths = map[string]struct{}{
+	"/v1/payment/ticket-params": {},
+}
+
 func (f finding) format() string {
 	return fmt.Sprintf(
 		"%s:%d: payment-middleware-check: mux.Register(...) called with capability path %q\n"+
@@ -101,6 +105,9 @@ func checkFile(fset *token.FileSet, path string) ([]finding, error) {
 			return true
 		}
 		if !strings.HasPrefix(pathStr, "/v1/") {
+			return true
+		}
+		if _, ok := allowedUnpaidV1Paths[pathStr]; ok {
 			return true
 		}
 		pos := fset.Position(call.Pos())

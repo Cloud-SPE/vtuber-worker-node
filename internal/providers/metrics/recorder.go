@@ -126,6 +126,7 @@ const (
 	MethodSufficientBalance = "SufficientBalance"
 	MethodCloseSession      = "CloseSession"
 	MethodGetQuote          = "GetQuote"
+	MethodGetTicketParams   = "GetTicketParams"
 	MethodListCapabilities  = "ListCapabilities"
 
 	// unit — streaming session work

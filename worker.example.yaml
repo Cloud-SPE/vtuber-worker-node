@@ -93,10 +93,11 @@ worker:
 
 # ─── Shared section ─────────────────────────────────────────────────────
 # Both daemon and worker parse these. Prices = wei per work-unit. The
-# daemon advertises them via GetQuote; the worker advertises the same
-# values on its HTTP /capabilities endpoint, instantiates the matching
+# daemon serves exact ticket params; the worker advertises the same
+# prices on `GET /registry/offerings`, serves
+# `POST /v1/payment/ticket-params`, instantiates the matching
 # StreamingModule, and forwards session-open requests to the backend_url
-# (which is the local session-runner).
+# (the local session-runner).
 capabilities:
   - capability: "livepeer:vtuber-session"
     # Streaming sessions meter on wall-clock seconds, not tokens.

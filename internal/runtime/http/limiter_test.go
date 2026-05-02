@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Cloud-SPE/livepeer-modules-project/payment-daemon/config/sharedyaml"
-
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/config"
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/providers/payeedaemon"
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/types"
@@ -22,27 +20,17 @@ import (
 // numbers to actually exercise the full/empty transitions.
 func buildFixtureWithCap(t *testing.T, capN int) *testFixture {
 	t.Helper()
-	shared := &sharedyaml.Config{
-		ProtocolVersion: sharedyaml.CurrentProtocolVersion,
-		Worker: sharedyaml.WorkerConfig{
-			HTTPListen:            "127.0.0.1:0",
-			PaymentDaemonSocket:   "/tmp/fake.sock",
-			MaxConcurrentRequests: capN,
+	cfg := config.New(config.WorkerSection{
+		HTTPListen:            "127.0.0.1:0",
+		PaymentDaemonSocket:   "/tmp/fake.sock",
+		MaxConcurrentRequests: capN,
+	}, []config.CapabilityEntry{{
+		Capability: "openai:/v1/chat/completions",
+		WorkUnit:   types.WorkUnitToken,
+		Offerings: []config.OfferingEntry{
+			{ID: "test-model", PricePerWorkUnitWei: "100", BackendURL: "http://backend.local:9000"},
 		},
-		Capabilities: []sharedyaml.CapabilityConfig{
-			{
-				Capability: "openai:/v1/chat/completions",
-				WorkUnit:   "token",
-				Models: []sharedyaml.ModelConfig{
-					{Model: "test-model", PricePerWorkUnitWei: "100", BackendURL: "http://backend.local:9000"},
-				},
-			},
-		},
-	}
-	cfg, err := config.FromShared(shared)
-	if err != nil {
-		t.Fatalf("FromShared: %v", err)
-	}
+	}})
 	payee := payeedaemon.NewFake()
 	mod := &fakeModule{
 		capability: "openai:/v1/chat/completions",

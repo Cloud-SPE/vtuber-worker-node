@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"math/big"
 	"net/http"
+	"strings"
 
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/providers/metrics"
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/providers/payeedaemon"
@@ -41,8 +43,21 @@ func (m *Mux) RegisterStreamingRoute(mod modules.StreamingModule) {
 		sem:      m.paidSem,
 		logger:   m.logger,
 		recorder: m.recorder,
+		sessions: m.streamingSessions,
 	})
 	m.inner.HandleFunc(key, handler)
+
+	topupKey := http.MethodPost + " /api/sessions/{gateway_session_id}/topup"
+	if _, dup := m.registered[topupKey]; !dup {
+		m.registered[topupKey] = struct{}{}
+		m.inner.HandleFunc(topupKey, streamingTopupHandler(m.payee, m.streamingSessions))
+	}
+
+	endKey := http.MethodPost + " /api/sessions/{gateway_session_id}/end"
+	if _, dup := m.registered[endKey]; !dup {
+		m.registered[endKey] = struct{}{}
+		m.inner.HandleFunc(endKey, streamingEndHandler(m.payee, m.streamingSessions))
+	}
 }
 
 // streamingDeps bundles the per-route state captured by the
@@ -53,6 +68,7 @@ type streamingDeps struct {
 	sem      chan struct{}
 	logger   *slog.Logger
 	recorder metrics.Recorder
+	sessions *streamingSessionRegistry
 }
 
 // streamingMiddleware is the streaming-session counterpart to the
@@ -113,8 +129,18 @@ func streamingMiddleware(d streamingDeps) http.HandlerFunc {
 			return
 		}
 
+		gatewaySessionID, err := extractGatewaySessionID(r, body)
+		if err != nil {
+			http.Error(w, "invalid session identity: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		r.Header.Set("X-Vtuber-Session-Id", gatewaySessionID)
+
 		// 4. ProcessPayment → seeds the (sender, work_id) balance.
 		workID := string(deriveWorkID(paymentBytes))
+		workerSessionID := deriveWorkerSessionID(workID)
+		r.Header.Set("X-Vtuber-Worker-Session-Id", workerSessionID)
+		r.Header.Set("X-Vtuber-Work-Id", workID)
 		ppRes, err := d.payee.ProcessPayment(r.Context(), paymentBytes, workID)
 		if err != nil {
 			d.logger.Warn("streaming: ProcessPayment failed",
@@ -124,7 +150,15 @@ func streamingMiddleware(d streamingDeps) http.HandlerFunc {
 		}
 
 		// 5. Construct the PaymentSession adapter for this session.
-		ps := newPaymentSessionAdapter(d.payee, ppRes.Sender, workID, d.recorder)
+		d.sessions.Upsert(streamingSessionInfo{
+			GatewaySessionID: gatewaySessionID,
+			WorkerSessionID:  workerSessionID,
+			WorkID:           workID,
+			Sender:           ppRes.Sender,
+		})
+		ps := newPaymentSessionAdapter(d.payee, ppRes.Sender, workID, d.recorder, func() {
+			d.sessions.Delete(gatewaySessionID)
+		})
 
 		// 6. 202 Accepted to the bridge. The body echoes the work_id
 		// so the bridge can correlate this session against its own
@@ -133,8 +167,10 @@ func streamingMiddleware(d streamingDeps) http.HandlerFunc {
 		// waiting for the connection to close (which only happens at
 		// session end).
 		respBody, err := json.Marshal(map[string]string{
-			"status":  "starting",
-			"work_id": workID,
+			"status":             "starting",
+			"gateway_session_id": gatewaySessionID,
+			"worker_session_id":  workerSessionID,
+			"work_id":            workID,
 		})
 		if err != nil {
 			http.Error(w, "internal: encode response: "+err.Error(), http.StatusInternalServerError)
@@ -187,19 +223,21 @@ const streamingMaxBodyBytes = 256 * 1024
 // work_id) so the module's call sites stay clean — they don't need
 // to thread credentials through every Debit / Sufficient / Close.
 type paymentSessionAdapter struct {
-	payee  payeedaemon.Client
-	sender []byte
-	workID string
-	rec    metrics.Recorder
-	closed bool
+	payee   payeedaemon.Client
+	sender  []byte
+	workID  string
+	rec     metrics.Recorder
+	closed  bool
+	onClose func()
 }
 
-func newPaymentSessionAdapter(c payeedaemon.Client, sender []byte, workID string, rec metrics.Recorder) *paymentSessionAdapter {
+func newPaymentSessionAdapter(c payeedaemon.Client, sender []byte, workID string, rec metrics.Recorder, onClose func()) *paymentSessionAdapter {
 	return &paymentSessionAdapter{
-		payee:  c,
-		sender: append([]byte(nil), sender...),
-		workID: workID,
-		rec:    rec,
+		payee:   c,
+		sender:  append([]byte(nil), sender...),
+		workID:  workID,
+		rec:     rec,
+		onClose: onClose,
 	}
 }
 
@@ -227,7 +265,105 @@ func (p *paymentSessionAdapter) Close(ctx context.Context) error {
 		return nil
 	}
 	p.closed = true
+	if p.onClose != nil {
+		defer p.onClose()
+	}
 	return p.payee.CloseSession(ctx, p.sender, p.workID)
+}
+
+func streamingTopupHandler(payee payeedaemon.Client, sessions *streamingSessionRegistry) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		gatewaySessionID := strings.TrimSpace(r.PathValue("gateway_session_id"))
+		if gatewaySessionID == "" {
+			http.Error(w, "gateway_session_id required", http.StatusBadRequest)
+			return
+		}
+		info, ok := sessions.Get(gatewaySessionID)
+		if !ok {
+			http.Error(w, "session not found", http.StatusNotFound)
+			return
+		}
+		paymentB64 := r.Header.Get("X-Livepeer-Payment")
+		if paymentB64 == "" {
+			http.Error(w, "missing X-Livepeer-Payment", http.StatusPaymentRequired)
+			return
+		}
+		paymentBytes, err := base64.StdEncoding.DecodeString(paymentB64)
+		if err != nil {
+			http.Error(w, "X-Livepeer-Payment not base64: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if _, err := payee.ProcessPayment(r.Context(), paymentBytes, info.WorkID); err != nil {
+			http.Error(w, "ProcessPayment: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"status":             "credited",
+			"gateway_session_id": gatewaySessionID,
+			"worker_session_id":  info.WorkerSessionID,
+			"work_id":            info.WorkID,
+		})
+	}
+}
+
+func streamingEndHandler(payee payeedaemon.Client, sessions *streamingSessionRegistry) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		gatewaySessionID := strings.TrimSpace(r.PathValue("gateway_session_id"))
+		if gatewaySessionID == "" {
+			http.Error(w, "gateway_session_id required", http.StatusBadRequest)
+			return
+		}
+		info, ok := sessions.Get(gatewaySessionID)
+		if !ok {
+			http.Error(w, "session not found", http.StatusNotFound)
+			return
+		}
+		if err := payee.CloseSession(r.Context(), info.Sender, info.WorkID); err != nil {
+			http.Error(w, "CloseSession: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		sessions.Delete(gatewaySessionID)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"status":             "ended",
+			"gateway_session_id": gatewaySessionID,
+			"worker_session_id":  info.WorkerSessionID,
+			"work_id":            info.WorkID,
+		})
+	}
+}
+
+func extractGatewaySessionID(r *http.Request, body []byte) (string, error) {
+	if r == nil {
+		return "", errors.New("nil request")
+	}
+	if id := strings.TrimSpace(r.Header.Get("X-Vtuber-Session-Id")); id != "" {
+		return id, nil
+	}
+	var payload struct {
+		GatewaySessionID string `json:"gateway_session_id"`
+		SessionID        string `json:"session_id"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return "", err
+	}
+	if id := strings.TrimSpace(payload.GatewaySessionID); id != "" {
+		return id, nil
+	}
+	if id := strings.TrimSpace(payload.SessionID); id != "" {
+		return id, nil
+	}
+	return "", errors.New("missing gateway_session_id or session_id")
+}
+
+func deriveWorkerSessionID(workID string) string {
+	if workID == "" {
+		return "worker_session_unknown"
+	}
+	return "worker_" + workID
 }
 
 // wei64 clamps a *big.Int wei value into an int64 for the

@@ -22,9 +22,6 @@ func VerifyDaemonCatalog(cfg *Config, daemon payeedaemon.ListCapabilitiesResult)
 	if cfg == nil {
 		return fmt.Errorf("verify: nil config")
 	}
-	if cfg.ProtocolVersion != daemon.ProtocolVersion {
-		return fmt.Errorf("verify: protocol_version mismatch: config=%d daemon=%d (upgrade one side to match)", cfg.ProtocolVersion, daemon.ProtocolVersion)
-	}
 	if got, want := len(daemon.Capabilities), len(cfg.Capabilities.Ordered); got != want {
 		return fmt.Errorf("verify: capability count mismatch: config has %d, daemon has %d", want, got)
 	}
@@ -36,16 +33,16 @@ func VerifyDaemonCatalog(cfg *Config, daemon payeedaemon.ListCapabilitiesResult)
 		if string(cfgCap.WorkUnit) != daemonCap.WorkUnit {
 			return fmt.Errorf("verify: capability[%d] (%q) work_unit mismatch: config=%q daemon=%q", i, cfgCap.Capability, cfgCap.WorkUnit, daemonCap.WorkUnit)
 		}
-		if got, want := len(daemonCap.Models), len(cfgCap.Offerings); got != want {
-			return fmt.Errorf("verify: capability[%d] (%q) model count mismatch: config=%d daemon=%d", i, cfgCap.Capability, want, got)
+		if got, want := len(daemonCap.Offerings), len(cfgCap.Offerings); got != want {
+			return fmt.Errorf("verify: capability[%d] (%q) offering count mismatch: config=%d daemon=%d", i, cfgCap.Capability, want, got)
 		}
-		for j, cfgModel := range cfgCap.Offerings {
-			daemonModel := daemonCap.Models[j]
-			if string(cfgModel.Model) != daemonModel.Model {
-				return fmt.Errorf("verify: capability[%d] (%q) model[%d] name mismatch: config=%q daemon=%q", i, cfgCap.Capability, j, cfgModel.Model, daemonModel.Model)
+		for j, cfgOffering := range cfgCap.Offerings {
+			daemonOffering := daemonCap.Offerings[j]
+			if string(cfgOffering.ID) != daemonOffering.ID {
+				return fmt.Errorf("verify: capability[%d] (%q) offering[%d] id mismatch: config=%q daemon=%q", i, cfgCap.Capability, j, cfgOffering.ID, daemonOffering.ID)
 			}
-			if cfgModel.PricePerWorkUnitWei != daemonModel.PricePerWorkUnitWei {
-				return fmt.Errorf("verify: capability[%d] (%q) model[%d] (%q) price mismatch: config=%q daemon=%q", i, cfgCap.Capability, j, cfgModel.Model, cfgModel.PricePerWorkUnitWei, daemonModel.PricePerWorkUnitWei)
+			if cfgOffering.PricePerWorkUnitWei != daemonOffering.PricePerWorkUnitWei {
+				return fmt.Errorf("verify: capability[%d] (%q) offering[%d] (%q) price mismatch: config=%q daemon=%q", i, cfgCap.Capability, j, cfgOffering.ID, cfgOffering.PricePerWorkUnitWei, daemonOffering.PricePerWorkUnitWei)
 			}
 		}
 	}

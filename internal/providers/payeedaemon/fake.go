@@ -30,6 +30,8 @@ type Fake struct {
 	ListCapabilitiesError     error
 	GetQuoteResponse          GetQuoteResult
 	GetQuoteError             error
+	GetTicketParamsResponse   TicketParams
+	GetTicketParamsError      error
 	CreditPerCall             *big.Int
 	DebitWeiPerWorkUnit       *big.Int
 	SenderAddress             []byte
@@ -38,6 +40,7 @@ type Fake struct {
 	SufficientBalanceCalls    int
 	CloseSessionCalls         int
 	GetQuoteCalls             int
+	GetTicketParamsCalls      int
 	LastProcessPaymentPayload []byte
 	LastDebitBalanceWorkUnits int64
 	LastProcessPaymentWorkID  string
@@ -47,6 +50,7 @@ type Fake struct {
 	LastCloseSessionWorkID    string
 	LastGetQuoteSender        []byte
 	LastGetQuoteCapability    string
+	LastGetTicketParams       GetTicketParamsRequest
 
 	// balances tracks (sender, work_id) → running balance so the fake
 	// stays consistent across calls (e.g. insufficient-balance tests).
@@ -84,6 +88,23 @@ func (f *Fake) GetQuote(_ context.Context, sender []byte, capability string) (Ge
 		return GetQuoteResult{}, f.GetQuoteError
 	}
 	return f.GetQuoteResponse, nil
+}
+
+func (f *Fake) GetTicketParams(_ context.Context, req GetTicketParamsRequest) (TicketParams, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.GetTicketParamsCalls++
+	f.LastGetTicketParams = GetTicketParamsRequest{
+		Sender:     append([]byte(nil), req.Sender...),
+		Recipient:  append([]byte(nil), req.Recipient...),
+		FaceValue:  new(big.Int).Set(req.FaceValue),
+		Capability: req.Capability,
+		Offering:   req.Offering,
+	}
+	if f.GetTicketParamsError != nil {
+		return TicketParams{}, f.GetTicketParamsError
+	}
+	return f.GetTicketParamsResponse, nil
 }
 
 func (f *Fake) ProcessPayment(_ context.Context, paymentBytes []byte, workID string) (ProcessPaymentResult, error) {

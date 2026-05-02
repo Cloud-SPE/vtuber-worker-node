@@ -13,8 +13,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/Cloud-SPE/livepeer-modules-project/payment-daemon/config/sharedyaml"
-
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/config"
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/providers/payeedaemon"
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/types"
@@ -71,27 +69,17 @@ type testFixture struct {
 
 func buildFixture(t *testing.T) *testFixture {
 	t.Helper()
-	shared := &sharedyaml.Config{
-		ProtocolVersion: sharedyaml.CurrentProtocolVersion,
-		Worker: sharedyaml.WorkerConfig{
-			HTTPListen:            "127.0.0.1:0",
-			PaymentDaemonSocket:   "/tmp/fake.sock",
-			MaxConcurrentRequests: 8,
+	cfg := config.New(config.WorkerSection{
+		HTTPListen:            "127.0.0.1:0",
+		PaymentDaemonSocket:   "/tmp/fake.sock",
+		MaxConcurrentRequests: 8,
+	}, []config.CapabilityEntry{{
+		Capability: "openai:/v1/chat/completions",
+		WorkUnit:   types.WorkUnitToken,
+		Offerings: []config.OfferingEntry{
+			{ID: "test-model", PricePerWorkUnitWei: "100", BackendURL: "http://backend.local:9000"},
 		},
-		Capabilities: []sharedyaml.CapabilityConfig{
-			{
-				Capability: "openai:/v1/chat/completions",
-				WorkUnit:   "token",
-				Models: []sharedyaml.ModelConfig{
-					{Model: "test-model", PricePerWorkUnitWei: "100", BackendURL: "http://backend.local:9000"},
-				},
-			},
-		},
-	}
-	cfg, err := config.FromShared(shared)
-	if err != nil {
-		t.Fatalf("FromShared: %v", err)
-	}
+	}})
 	payee := payeedaemon.NewFake()
 	mod := &fakeModule{
 		capability: "openai:/v1/chat/completions",
@@ -346,29 +334,32 @@ func TestHealthHandler(t *testing.T) {
 	if body["status"] != "ok" {
 		t.Errorf("status field: got %v, want ok", body["status"])
 	}
-	if fmt.Sprintf("%v", body["protocol_version"]) != fmt.Sprintf("%d", sharedyaml.CurrentProtocolVersion) {
+	if fmt.Sprintf("%v", body["protocol_version"]) != fmt.Sprintf("%d", config.CurrentProtocolVersion) {
 		t.Errorf("protocol_version: got %v", body["protocol_version"])
+	}
+	if fmt.Sprintf("%v", body["api_version"]) != fmt.Sprintf("%d", config.CurrentAPIVersion) {
+		t.Errorf("api_version: got %v", body["api_version"])
 	}
 }
 
-func TestCapabilitiesHandler(t *testing.T) {
+func TestRegistryOfferingsHandler(t *testing.T) {
 	f := buildFixture(t)
 	RegisterUnpaidHandlers(f.mux, f.cfg)
-	req := httptest.NewRequest(nethttp.MethodGet, "/capabilities", nil)
+	req := httptest.NewRequest(nethttp.MethodGet, "/registry/offerings", nil)
 	rr := httptest.NewRecorder()
 	f.mux.Handler().ServeHTTP(rr, req)
 	if rr.Code != nethttp.StatusOK {
 		t.Fatalf("status: got %d, want 200", rr.Code)
 	}
 	raw, _ := io.ReadAll(rr.Body)
-	if !strings.Contains(string(raw), `"capability":"openai:/v1/chat/completions"`) {
-		t.Errorf("capabilities output missing capability: %s", raw)
+	if !strings.Contains(string(raw), `"name":"openai:/v1/chat/completions"`) {
+		t.Errorf("registry output missing capability: %s", raw)
 	}
-	if !strings.Contains(string(raw), `"model":"test-model"`) {
-		t.Errorf("capabilities output missing model: %s", raw)
+	if !strings.Contains(string(raw), `"id":"test-model"`) {
+		t.Errorf("registry output missing offering id: %s", raw)
 	}
 	if strings.Contains(string(raw), "backend_url") {
-		t.Errorf("capabilities output MUST NOT include backend_url: %s", raw)
+		t.Errorf("registry output MUST NOT include backend_url: %s", raw)
 	}
 }
 

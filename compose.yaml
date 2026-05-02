@@ -14,7 +14,7 @@
 #
 # Then hit the worker:
 #   curl http://localhost:8080/health
-#   curl http://localhost:8080/capabilities
+#   curl http://localhost:8080/registry/offerings
 
 services:
   payment-daemon:

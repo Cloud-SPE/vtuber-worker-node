@@ -70,7 +70,7 @@ func use() {
 }
 
 // TestCheckFile_AllowedRegisterUnpaid: Register with an unpaid path
-// (/health, /capabilities) should be allowed.
+// (/health, /registry/offerings) should be allowed.
 func TestCheckFile_AllowedRegisterUnpaid(t *testing.T) {
 	src := `package x
 
@@ -82,9 +82,8 @@ func (m *mux) Register(method, path string, h http.HandlerFunc) {}
 func use() {
 	var m mux
 	m.Register("GET", "/health", nil)
-	m.Register("GET", "/capabilities", nil)
-	m.Register("GET", "/quote", nil)
-	m.Register("GET", "/quotes", nil)
+	m.Register("GET", "/registry/offerings", nil)
+	m.Register("POST", "/v1/payment/ticket-params", nil)
 }
 `
 	p := writeGo(t, t.TempDir(), "a.go", src)

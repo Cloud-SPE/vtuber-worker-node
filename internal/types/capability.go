@@ -3,7 +3,8 @@ package types
 // CapabilityID is the canonical capability string in the form
 // `<domain>:<identifier>`, e.g. `openai:/v1/chat/completions`. Matches
 // the library's regex `^[a-z][a-z0-9]*:.+$` — validation lives in
-// sharedyaml; this type is a named alias for clarity at call sites.
+// worker config validation; this type is a named alias for clarity at
+// call sites.
 type CapabilityID string
 
 // ModelID is the model identifier a module routes on, e.g.
@@ -17,6 +18,7 @@ type ModelID string
 type WorkUnit string
 
 const (
+	WorkUnitSecond              WorkUnit = "second"
 	WorkUnitToken               WorkUnit = "token"
 	WorkUnitCharacter           WorkUnit = "character"
 	WorkUnitAudioSecond         WorkUnit = "audio_second"

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/config"
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/providers/metrics"
@@ -15,7 +16,7 @@ import (
 // Mux is the worker's routing surface. Two entry points:
 //
 //   - Register(method, path, handler)     → unpaid; for /health,
-//     /capabilities, /quote, /quotes.
+//     /registry/offerings, /v1/payment/ticket-params.
 //   - RegisterPaidRoute(module)           → wraps module in the
 //     payment middleware and binds at (module.HTTPMethod,
 //     module.HTTPPath).
@@ -48,6 +49,8 @@ type Mux struct {
 	// len = currently-in-flight. Acquired on entry to paymentMiddleware;
 	// failure returns 503 capacity_exhausted.
 	paidSem chan struct{}
+
+	streamingSessions *streamingSessionRegistry
 }
 
 // NewMux wires a Mux against a validated config and a connected
@@ -74,6 +77,9 @@ func NewMux(cfg *config.Config, payee payeedaemon.Client, logger *slog.Logger) *
 		registered:       map[string]struct{}{},
 		paidCapabilities: map[types.CapabilityID]struct{}{},
 		paidSem:          make(chan struct{}, maxConcurrent),
+		streamingSessions: &streamingSessionRegistry{
+			byGatewayID: make(map[string]streamingSessionInfo),
+		},
 	}
 }
 
@@ -149,4 +155,44 @@ func (m *Mux) HasPaidCapability(c types.CapabilityID) bool {
 // Not for registering new routes — use Register / RegisterPaidRoute.
 func (m *Mux) Handler() http.Handler {
 	return m.inner
+}
+
+type streamingSessionRegistry struct {
+	mu          sync.RWMutex
+	byGatewayID map[string]streamingSessionInfo
+}
+
+type streamingSessionInfo struct {
+	GatewaySessionID string
+	WorkerSessionID  string
+	WorkID           string
+	Sender           []byte
+}
+
+func (r *streamingSessionRegistry) Upsert(info streamingSessionInfo) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.byGatewayID[info.GatewaySessionID] = streamingSessionInfo{
+		GatewaySessionID: info.GatewaySessionID,
+		WorkerSessionID:  info.WorkerSessionID,
+		WorkID:           info.WorkID,
+		Sender:           append([]byte(nil), info.Sender...),
+	}
+}
+
+func (r *streamingSessionRegistry) Get(gatewaySessionID string) (streamingSessionInfo, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	info, ok := r.byGatewayID[gatewaySessionID]
+	if !ok {
+		return streamingSessionInfo{}, false
+	}
+	info.Sender = append([]byte(nil), info.Sender...)
+	return info, true
+}
+
+func (r *streamingSessionRegistry) Delete(gatewaySessionID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.byGatewayID, gatewaySessionID)
 }

@@ -31,10 +31,9 @@ type DebitBalanceResult struct {
 
 // ListCapabilitiesResult mirrors paymentsv1.ListCapabilitiesResponse
 // in domain types. Used at startup to cross-check against the worker's
-// own sharedyaml.Config parse.
+// own worker.yaml parse.
 type ListCapabilitiesResult struct {
-	ProtocolVersion int32
-	Capabilities    []Capability
+	Capabilities []Capability
 }
 
 // Capability mirrors paymentsv1.CapabilityEntry.
@@ -45,18 +44,18 @@ type Capability struct {
 	// WorkUnit identifies the metering unit ("token", "audio_second",
 	// ...). Opaque to the daemon; used by modules + observability.
 	WorkUnit string
-	// Models is the list of models served on this capability, each
-	// with its configured per-unit price. Ordered as the daemon
-	// emits them (capability string, then model name).
-	Models []ModelPrice
+	// Offerings is the list of offerings served on this capability,
+	// each with its configured per-unit price. Ordered as the daemon
+	// emits them (capability string, then offering id).
+	Offerings []OfferingPrice
 }
 
-// ModelPrice mirrors paymentsv1.ModelPrice.
-type ModelPrice struct {
-	// Model identifier (e.g. "llama-3.3-70b").
-	Model string
+// OfferingPrice mirrors paymentsv1.OfferingPrice.
+type OfferingPrice struct {
+	// Offering identifier (e.g. "vtuber-default-1080p30").
+	ID string
 	// PricePerWorkUnitWei, as a decimal string. Retained as a string
-	// so byte-equal comparison against the worker's sharedyaml.Config
+	// so byte-equal comparison against the worker's worker.yaml parse
 	// parse is exact — no rounding, no scientific-notation drift.
 	PricePerWorkUnitWei string
 }
@@ -66,8 +65,18 @@ type ModelPrice struct {
 // flat bytes-and-numbers so the HTTP handler can render it into the
 // JSON shape the bridge expects without touching proto types.
 type GetQuoteResult struct {
-	TicketParams TicketParams
-	ModelPrices  []ModelPrice
+	TicketParams   TicketParams
+	OfferingPrices []OfferingPrice
+}
+
+// GetTicketParamsRequest is the worker-side projection of the
+// daemon's exact ticket-params request.
+type GetTicketParamsRequest struct {
+	Sender     []byte
+	Recipient  []byte
+	FaceValue  *big.Int
+	Capability string
+	Offering   string
 }
 
 // TicketParams is the worker-side projection of the proto TicketParams.

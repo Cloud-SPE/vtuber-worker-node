@@ -6,13 +6,13 @@ Index of execution plans against this repo. Plans are first-class artifacts chec
 
 | Plan | Purpose |
 |---|---|
-| (no in-repo plans yet) | The current build sequence is governed by [`vtuber-worker-node-bootstrap.md`](https://github.com/Cloud-SPE/livepeer-vtuber-project/blob/main/docs/exec-plans/active/vtuber-worker-node-bootstrap.md) in the upstream `livepeer-vtuber-project`. As the repo accrues per-repo work (refactors, perf items, repo-local milestones), they land here as `docs/exec-plans/active/NNNN-<name>.md`. |
+| [0001-v3-archetype-a-alignment](docs/exec-plans/active/0001-v3-archetype-a-alignment.md) | Earlier repo-local v3 alignment draft. Retained as active history until explicitly completed or superseded. |
 
 ## Completed
 
 | Plan | Completed | Outcome |
 |---|---|---|
-| (none yet) | | |
+| [0002-pattern-b-payment-daemon-alignment](docs/exec-plans/active/0002-pattern-b-payment-daemon-alignment.md) | 2026-05-03 | Worker aligned to the current Pattern B vtuber contract and current receiver-side payment-daemon interfaces, including canonical open/topup/end routes. |
 
 ## How plans work
 

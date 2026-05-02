@@ -110,15 +110,18 @@ const (
 // ts_ms, data). The data field is type-specific and serialized as
 // JSON when sent over the wire.
 type Event struct {
-	EventID   string `json:"event_id"`
+	EventID   string    `json:"event_id"`
 	Type      EventType `json:"type"`
-	SessionID string `json:"session_id"`
-	TsMs      int64  `json:"ts_ms"`
-	Data      any    `json:"data,omitempty"`
+	SessionID string    `json:"session_id"`
+	TsMs      int64     `json:"ts_ms"`
+	Data      any       `json:"data,omitempty"`
 }
 
 // UsageTickData is the payload of EventSessionUsageTick.
 type UsageTickData struct {
+	WorkerSessionID     string `json:"worker_session_id"`
+	WorkID              string `json:"work_id"`
+	UsageSeq            uint64 `json:"usage_seq"`
 	WorkUnits           uint64 `json:"work_units"`
 	WorkUnitKind        string `json:"work_unit_kind"`
 	CumulativeWorkUnits uint64 `json:"cumulative_work_units"`
@@ -126,12 +129,14 @@ type UsageTickData struct {
 
 // BalanceLowData is the payload of EventSessionBalanceLow.
 type BalanceLowData struct {
-	RunwayUnitsRemaining int64 `json:"runway_units_remaining"`
+	RunwaySecondsRemaining int64 `json:"runway_seconds_remaining"`
 }
 
 // BalanceRefilledData is the payload of EventSessionBalanceRefilled.
 type BalanceRefilledData struct {
-	NewBalanceUnits int64 `json:"new_balance_units"`
+	WorkerSessionID         string `json:"worker_session_id"`
+	WorkID                  string `json:"work_id"`
+	NewBalanceRunwaySeconds int64  `json:"new_balance_runway_seconds"`
 }
 
 // ErrorData is the payload of EventSessionError.
@@ -143,6 +148,6 @@ type ErrorData struct {
 
 // EndedData is the payload of EventSessionEnded.
 type EndedData struct {
-	Reason              EndReason `json:"reason"`
-	FinalCumulativeUnits uint64   `json:"final_cumulative_units"`
+	Reason               EndReason `json:"reason"`
+	FinalCumulativeUnits uint64    `json:"final_cumulative_units"`
 }
