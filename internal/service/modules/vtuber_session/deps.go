@@ -83,7 +83,7 @@ type BackendForward interface {
 
 	// Close instructs the backend to tear down the session. Best-
 	// effort: the backend may already be gone.
-	Close(ctx context.Context, sessionID string) error
+	Close(ctx context.Context, sessionID string, backendURL string) error
 }
 
 // IDGenerator produces unique event_id values for outbound Events.

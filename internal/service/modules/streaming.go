@@ -72,6 +72,14 @@ type StreamingModule interface {
 	Serve(ctx context.Context, req *http.Request, ps PaymentSession) error
 }
 
+// SessionTerminator is an optional extension for streaming modules
+// whose backend runtime supports an explicit end signal. When
+// implemented, the worker's /api/sessions/{gateway_session_id}/end
+// route calls TerminateSession before releasing payment-daemon state.
+type SessionTerminator interface {
+	TerminateSession(ctx context.Context, gatewaySessionID string) error
+}
+
 // PaymentSession is the per-session handle a StreamingModule uses to
 // debit incrementally and check headroom. The middleware constructs
 // one PaymentSession per session-open and passes it into Serve.

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -9,6 +10,16 @@ import (
 
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/providers/payeedaemon"
 )
+
+type fakeSessionTerminator struct {
+	calls []string
+	err   error
+}
+
+func (f *fakeSessionTerminator) TerminateSession(_ context.Context, gatewaySessionID string) error {
+	f.calls = append(f.calls, gatewaySessionID)
+	return f.err
+}
 
 func TestStreamingTopupHandler_HappyPath(t *testing.T) {
 	payee := payeedaemon.NewFake()
@@ -69,6 +80,7 @@ func TestStreamingTopupHandler_UnknownSession(t *testing.T) {
 
 func TestStreamingEndHandler_HappyPath(t *testing.T) {
 	payee := payeedaemon.NewFake()
+	terminator := &fakeSessionTerminator{}
 	registry := &streamingSessionRegistry{
 		byGatewayID: map[string]streamingSessionInfo{
 			"gw_123": {
@@ -84,10 +96,13 @@ func TestStreamingEndHandler_HappyPath(t *testing.T) {
 	req.SetPathValue("gateway_session_id", "gw_123")
 	rr := httptest.NewRecorder()
 
-	streamingEndHandler(payee, registry).ServeHTTP(rr, req)
+	streamingEndHandler(payee, registry, terminator).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status: got %d, want 200 body=%s", rr.Code, rr.Body.String())
+	}
+	if len(terminator.calls) != 1 || terminator.calls[0] != "gw_123" {
+		t.Fatalf("TerminateSession calls: got %#v", terminator.calls)
 	}
 	if payee.CloseSessionCalls != 1 {
 		t.Fatalf("CloseSessionCalls: got %d, want 1", payee.CloseSessionCalls)
@@ -115,12 +130,43 @@ func TestStreamingEndHandler_UnknownSession(t *testing.T) {
 	req.SetPathValue("gateway_session_id", "gw_missing")
 	rr := httptest.NewRecorder()
 
-	streamingEndHandler(payee, registry).ServeHTTP(rr, req)
+	streamingEndHandler(payee, registry, nil).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("status: got %d, want 404", rr.Code)
 	}
 	if payee.CloseSessionCalls != 0 {
 		t.Fatalf("CloseSessionCalls: got %d, want 0", payee.CloseSessionCalls)
+	}
+}
+
+func TestStreamingEndHandler_BackendStopFailure(t *testing.T) {
+	payee := payeedaemon.NewFake()
+	terminator := &fakeSessionTerminator{err: context.DeadlineExceeded}
+	registry := &streamingSessionRegistry{
+		byGatewayID: map[string]streamingSessionInfo{
+			"gw_123": {
+				GatewaySessionID: "gw_123",
+				WorkerSessionID:  "worker_abc",
+				WorkID:           "work_456",
+				Sender:           []byte{0x01, 0x02},
+			},
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/sessions/gw_123/end", nil)
+	req.SetPathValue("gateway_session_id", "gw_123")
+	rr := httptest.NewRecorder()
+
+	streamingEndHandler(payee, registry, terminator).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status: got %d, want 502 body=%s", rr.Code, rr.Body.String())
+	}
+	if payee.CloseSessionCalls != 0 {
+		t.Fatalf("CloseSessionCalls: got %d, want 0", payee.CloseSessionCalls)
+	}
+	if _, ok := registry.Get("gw_123"); !ok {
+		t.Fatalf("registry entry unexpectedly removed")
 	}
 }

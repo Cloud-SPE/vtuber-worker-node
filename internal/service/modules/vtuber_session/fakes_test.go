@@ -18,18 +18,18 @@ type fakePaymentSession struct {
 	mu sync.Mutex
 
 	// Behavior knobs.
-	debitErr           error
-	debitErrUntilCall  int   // if >0, return debitErr until this many calls have been made
-	balanceAfterDebit  int64 // returned by Debit (after the units are subtracted; tests script directly)
-	sufficientResults  []bool
-	sufficientErr      error
-	closeErr           error
+	debitErr          error
+	debitErrUntilCall int   // if >0, return debitErr until this many calls have been made
+	balanceAfterDebit int64 // returned by Debit (after the units are subtracted; tests script directly)
+	sufficientResults []bool
+	sufficientErr     error
+	closeErr          error
 
 	// Recorded calls.
-	debitCalls    []debitCall
-	sufficientCalls    []sufficientCall
-	closeCalls    int
-	sufficientIdx int
+	debitCalls      []debitCall
+	sufficientCalls []sufficientCall
+	closeCalls      int
+	sufficientIdx   int
 }
 
 type debitCall struct {
@@ -189,7 +189,7 @@ func (b *fakeBackend) OpenSession(_ context.Context, _ *http.Request, _ string) 
 	return b.openErr
 }
 
-func (b *fakeBackend) Close(_ context.Context, _ string) error {
+func (b *fakeBackend) Close(_ context.Context, _ string, _ string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.closeCalls++
@@ -200,10 +200,10 @@ func (b *fakeBackend) Close(_ context.Context, _ string) error {
 // without sleeping. Advance() releases queued tick events; After()
 // returns a channel that fires when an Advance crosses its deadline.
 type fakeClock struct {
-	mu       sync.Mutex
-	now      time.Time
-	tickers  []*fakeTicker
-	timers   []*fakeTimer
+	mu      sync.Mutex
+	now     time.Time
+	tickers []*fakeTicker
+	timers  []*fakeTimer
 }
 
 type fakeTicker struct {
@@ -296,8 +296,8 @@ func (c *fakeClock) Advance(d time.Duration) {
 
 // fakeIDGen returns evt_001, evt_002, ... — deterministic for tests.
 type fakeIDGen struct {
-	mu  sync.Mutex
-	n   int
+	mu sync.Mutex
+	n  int
 }
 
 func (g *fakeIDGen) NextID() string {

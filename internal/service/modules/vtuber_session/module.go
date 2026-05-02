@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -130,6 +131,7 @@ func (m *Module) EstimateWorkUnits(req *http.Request) (int64, error) {
 
 // Verify Module satisfies the StreamingModule interface at compile time.
 var _ modules.StreamingModule = (*Module)(nil)
+var _ modules.SessionTerminator = (*Module)(nil)
 
 // session captures the per-Serve mutable state. Each Serve call gets
 // its own session value; the Module struct is shared (read-only) across
@@ -254,6 +256,19 @@ func (m *Module) Serve(ctx context.Context, req *http.Request, ps modules.Paymen
 		return err
 	}
 	return nil
+}
+
+// TerminateSession forwards an explicit stop to the local backend so
+// gateway-triggered end requests tear down the render runtime before
+// the worker releases payment state.
+func (m *Module) TerminateSession(ctx context.Context, gatewaySessionID string) error {
+	if strings.TrimSpace(gatewaySessionID) == "" {
+		return errors.New("vtuber_session: empty gateway session id")
+	}
+	if m.cfg.BackendURL == "" {
+		return errors.New("vtuber_session: empty BackendURL in config")
+	}
+	return m.cfg.Backend.Close(ctx, gatewaySessionID, m.cfg.BackendURL)
 }
 
 // extractSessionID picks the session_id from the request — header

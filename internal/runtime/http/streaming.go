@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/providers/metrics"
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/providers/payeedaemon"
@@ -56,7 +57,11 @@ func (m *Mux) RegisterStreamingRoute(mod modules.StreamingModule) {
 	endKey := http.MethodPost + " /api/sessions/{gateway_session_id}/end"
 	if _, dup := m.registered[endKey]; !dup {
 		m.registered[endKey] = struct{}{}
-		m.inner.HandleFunc(endKey, streamingEndHandler(m.payee, m.streamingSessions))
+		var terminator modules.SessionTerminator
+		if t, ok := mod.(modules.SessionTerminator); ok {
+			terminator = t
+		}
+		m.inner.HandleFunc(endKey, streamingEndHandler(m.payee, m.streamingSessions, terminator))
 	}
 }
 
@@ -308,7 +313,11 @@ func streamingTopupHandler(payee payeedaemon.Client, sessions *streamingSessionR
 	}
 }
 
-func streamingEndHandler(payee payeedaemon.Client, sessions *streamingSessionRegistry) http.HandlerFunc {
+func streamingEndHandler(
+	payee payeedaemon.Client,
+	sessions *streamingSessionRegistry,
+	terminator modules.SessionTerminator,
+) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		gatewaySessionID := strings.TrimSpace(r.PathValue("gateway_session_id"))
 		if gatewaySessionID == "" {
@@ -319,6 +328,15 @@ func streamingEndHandler(payee payeedaemon.Client, sessions *streamingSessionReg
 		if !ok {
 			http.Error(w, "session not found", http.StatusNotFound)
 			return
+		}
+		if terminator != nil {
+			closeCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+			err := terminator.TerminateSession(closeCtx, gatewaySessionID)
+			cancel()
+			if err != nil {
+				http.Error(w, "backend stop: "+err.Error(), http.StatusBadGateway)
+				return
+			}
 		}
 		if err := payee.CloseSession(r.Context(), info.Sender, info.WorkID); err != nil {
 			http.Error(w, "CloseSession: "+err.Error(), http.StatusBadRequest)

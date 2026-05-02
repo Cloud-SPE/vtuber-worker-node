@@ -1,12 +1,15 @@
 package vtuber_session
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
+	"strings"
 	"sync/atomic"
 )
 
@@ -112,12 +115,52 @@ func redactBearers(s string) string {
 	return bearerPattern.ReplaceAllString(s, "${1}<redacted>")
 }
 
-// Close instructs the backend to tear down the session. Best-effort.
-func (h *HTTPBackend) Close(ctx context.Context, sessionID string) error {
-	// Real shape lands in M7 (local-dev integration with session-runner's
-	// /api/sessions/{id}/end). For M3, no-op so the goroutine fan-out
-	// can call Close without conditional gating.
-	return nil
+// Close instructs the backend to tear down one session. A backend that
+// reports "already stopped" is treated as success so end retries stay
+// idempotent.
+func (h *HTTPBackend) Close(ctx context.Context, sessionID string, backendURL string) error {
+	if strings.TrimSpace(sessionID) == "" {
+		return errors.New("vtuber_session: HTTPBackend.Close: empty sessionID")
+	}
+	if strings.TrimSpace(backendURL) == "" {
+		return errors.New("vtuber_session: HTTPBackend.Close: empty backendURL")
+	}
+	stopURL, err := sessionStopURL(backendURL, sessionID)
+	if err != nil {
+		return err
+	}
+	outReq, err := http.NewRequestWithContext(ctx, http.MethodPost, stopURL, http.NoBody)
+	if err != nil {
+		return fmt.Errorf("build backend close request: %w", err)
+	}
+	resp, err := h.Client.Do(outReq)
+	if err != nil {
+		return fmt.Errorf("backend stop POST: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	}
+	errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
+	if resp.StatusCode == http.StatusConflict && isAlreadyStoppedError(errBody) {
+		return nil
+	}
+	return fmt.Errorf("backend stop returned %d: %s", resp.StatusCode, redactBearers(string(errBody)))
+}
+
+func sessionStopURL(backendURL string, sessionID string) (string, error) {
+	u, err := url.Parse(backendURL)
+	if err != nil {
+		return "", fmt.Errorf("parse backendURL: %w", err)
+	}
+	u.Path = "/api/sessions/" + url.PathEscape(sessionID) + "/stop"
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String(), nil
+}
+
+func isAlreadyStoppedError(body []byte) bool {
+	return bytes.Contains(body, []byte("no_active_session")) || bytes.Contains(body, []byte("no_active_stream"))
 }
 
 // CounterIDGen is a deterministic IDGenerator for testing and a
