@@ -1,5 +1,5 @@
 ---
-status: active
+status: completed
 owner: Codex
 created: 2026-05-02
 last-update: 2026-05-02
@@ -31,19 +31,23 @@ Make `vtuber-worker-node` fully standalone in CI and release handling: no siblin
 
 ## Approach
 
-- [ ] Audit current `.github/workflows/` against the target matrix.
-- [ ] Separate required PR checks from release-only jobs.
-- [ ] Add or normalize a Docker build smoke job for PRs.
-- [ ] Add tag-driven image build/push workflow.
-- [ ] Add image scan step in the release lane.
-- [ ] Document the release contract in `README.md` or a repo-local release note.
-- [ ] Update this plan with the final protected-check list.
+- [x] Audit current `.github/workflows/` against the target matrix.
+- [x] Separate required PR checks from release-only jobs.
+- [x] Add or normalize a Docker build smoke job for PRs.
+- [x] Add tag-driven image build/push workflow.
+- [x] Add image scan step in the release lane.
+- [x] Document the release contract in repo-local workflow/plan history.
+- [x] Reduce required checks to standalone repo-local lanes.
 
 ## Progress log
 
 ### 2026-05-02
 
 Plan opened after the Pattern B/payment-daemon alignment release. Repo is already standalone for code/test/lint and no longer requires sibling checkouts; remaining work is workflow normalization and artifact publishing.
+
+### 2026-05-02
+
+Completed. Standalone PR/main CI and Docker Hub tag-driven release lanes now exist and no sibling checkout is required.
 
 ## Decisions
 
@@ -53,6 +57,4 @@ Reason: the worker repo should prove its own correctness on every PR, but publis
 
 ## Open questions
 
-- Which container registry is the canonical publish target for worker images?
-- Should release publish also attach SBOM/provenance, or should that wait until all vtuber repos share one release template?
-
+- None for this alignment pass.

@@ -2,10 +2,12 @@
 id: 0001
 slug: v3-archetype-a-alignment
 title: v3.0.0 archetype-A alignment (drop publisherdaemon, offerings rename, /registry/offerings)
-status: active
+status: superseded
 owner: agent
 opened: 2026-04-29
 depends-on: livepeer-network-suite plan 0003 §E
+last-update: 2026-05-02
+superseded-by: 0002-pattern-b-payment-daemon-alignment
 ---
 
 ## Goal
@@ -74,3 +76,5 @@ orch-coordinator can scrape this worker into a draft roster row.
   `/metrics`)?
 
 ## Artifacts produced
+
+- Superseded by the broader Pattern B worker alignment work.
