@@ -6,7 +6,14 @@ Sibling repo of [`openai-worker-node`](https://github.com/Cloud-SPE/openai-worke
 
 ## Status
 
-**M1 — repo scaffolding (skeleton only).** This commit copies the `openai-worker-node` skeleton and strips out OpenAI-specific module code. The `StreamingModule` interface, the `vtuber-session` module implementation, and the contract tests land in M2–M4. A binary built at this commit refuses to start against any non-empty `worker.yaml` — that's the intended state for skeleton acceptance. See the build plan: [`vtuber-worker-node-bootstrap.md`](https://github.com/Cloud-SPE/livepeer-vtuber-project/blob/main/docs/exec-plans/active/vtuber-worker-node-bootstrap.md).
+Implements the `livepeer:vtuber-session` worker contract end-to-end:
+
+- payment-daemon receiver integration
+- `offerings` advertisement and ticket-params surface
+- worker open/topup/end session routes
+- local `session-runner` backend forwarding
+
+The next major track is worker-side backend pooling and capacity routing. See the upstream design and execution plans in `livepeer-vtuber-project` for the broader system roadmap.
 
 ## Repo layout
 
@@ -37,6 +44,16 @@ go build -o bin/vtuber-worker-node ./cmd/vtuber-worker-node
 go test ./...
 make lint                # golangci-lint + custom payment-middleware-check
 ```
+
+## Production deployment
+
+Start with [compose.prod.yaml](compose.prod.yaml), [.env.example](.env.example), and the operator runbook at [docs/operations/running-with-docker.md](docs/operations/running-with-docker.md). The minimum production host is:
+
+- `payment-daemon` (receiver mode)
+- `session-runner`
+- `vtuber-worker-node`
+
+For the first deployment, prefer one host, one runner, one worker, and static registration in your orchestrator rather than resolver/publisher automation.
 
 ## Where the design lives
 

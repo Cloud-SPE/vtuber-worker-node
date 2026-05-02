@@ -1,33 +1,31 @@
-# Production worker-side stack.
+# Production vtuber worker stack.
 #
-# Standalone — paste into Portainer as a single Stack, or run:
+# Standalone:
 #   docker compose -f compose.prod.yaml --env-file .env up -d
 #
-# Two services:
-#   - payment-daemon  (receiver mode, Arbitrum One mainnet)
-#   - openai-worker   (HTTP server, talks to your Ollama backend)
+# Services:
+#   - payment-daemon  (receiver mode, Arbitrum One)
+#   - session-runner  (local backend for /api/sessions/start)
+#   - vtuber-worker   (public worker HTTP surface)
 #
-# Ingress:
-#   Cloudflare Tunnel hits `openai-worker:8080` directly. If
-#   cloudflared runs as a docker container, attach it to the
-#   `cf-tunnel` external network defined below. If cloudflared runs
-#   on the host (systemd / package install), use the published port
-#   below (host:8080).
-#
-# See docs/operations/running-with-docker.md for the full walkthrough.
+# This stack intentionally does NOT include a service-registry publisher.
+# Current recommended first-production posture is:
+#   - deploy one worker host
+#   - register it statically in the bridge / orchestrator
+#   - add resolver/publisher automation later
 
-name: livepeer-worker
+name: livepeer-vtuber-worker
 
 services:
   payment-daemon:
-    image: tztcloud/livepeer-payment-daemon:v0.8.10
+    image: tztcloud/livepeer-payment-daemon:${PAYMENT_DAEMON_IMAGE_TAG:-v3.1.7}
     restart: unless-stopped
     command:
       - --mode=receiver
       - --socket=/var/run/livepeer/payment-daemon.sock
       - --store-path=/var/lib/livepeer/payment-daemon.db
       - --config=/etc/livepeer/worker.yaml
-      - --chain-rpc=${CHAIN_RPC:?set CHAIN_RPC (Arbitrum One mainnet RPC URL)}
+      - --chain-rpc=${CHAIN_RPC:?set CHAIN_RPC (Arbitrum One RPC URL)}
       - --keystore-path=/etc/livepeer/keystore.json
       - --keystore-password-file=/etc/livepeer/keystore-password
       - --redemption-interval=30s
@@ -41,54 +39,72 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: '10m'
-        max-file: '5'
+        max-size: "10m"
+        max-file: "5"
     deploy:
       resources:
         limits:
-          cpus: '1'
+          cpus: "1"
           memory: 512m
     security_opt:
       - no-new-privileges:true
 
-  openai-worker:
-    image: tztcloud/livepeer-vtuber-worker-node:v0.8.10
+  session-runner:
+    image: ${SESSION_RUNNER_IMAGE:?set SESSION_RUNNER_IMAGE}
+    restart: unless-stopped
+    environment:
+      SESSION_RUNNER_HTTP_HOST: 0.0.0.0
+      SESSION_RUNNER_HTTP_PORT: 8080
+      SESSION_RUNNER_LOG_LEVEL: ${SESSION_RUNNER_LOG_LEVEL:-info}
+      SESSION_RUNNER_LOG_FORMAT: ${SESSION_RUNNER_LOG_FORMAT:-json}
+      SESSION_RUNNER_RENDERER: ${SESSION_RUNNER_RENDERER:-chromium}
+      SESSION_RUNNER_RENDERER_DIST: /app/avatar-renderer/dist
+      SESSION_RUNNER_LLM: ${SESSION_RUNNER_LLM:-mock}
+      SESSION_RUNNER_TTS: ${SESSION_RUNNER_TTS:-mock}
+      SESSION_RUNNER_OPENAI_BRIDGE_URL: ${SESSION_RUNNER_OPENAI_BRIDGE_URL:-}
+      SESSION_RUNNER_OPENAI_BRIDGE_KEY: ${SESSION_RUNNER_OPENAI_BRIDGE_KEY:-}
+    expose:
+      - "8080"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 8g
+    security_opt:
+      - no-new-privileges:true
+
+  vtuber-worker:
+    image: ${VTUBER_WORKER_IMAGE:?set VTUBER_WORKER_IMAGE}
     restart: unless-stopped
     depends_on:
       - payment-daemon
+      - session-runner
     command:
       - --config=/etc/livepeer/worker.yaml
       - --log-level=${WORKER_LOG_LEVEL:-info}
-      # METRICS_PORT (default empty) enables the Prometheus /metrics
-      # listener inside the container. See .env.example + docs/operations
-      # /running-with-docker.md#observability.
       - --metrics-listen=${METRICS_PORT:+:${METRICS_PORT}}
     volumes:
       - ${WORKER_YAML_PATH:-./worker.yaml}:/etc/livepeer/worker.yaml:ro
       - payment-daemon-sock:/var/run/livepeer:ro
     ports:
-      # Published to the host so cloudflared (if running outside docker)
-      # can hit it via http://<vps-ip>:${WORKER_HOST_PORT}. Drop this
-      # block if cloudflared shares the cf-tunnel network and reaches
-      # the container by name.
-      - '${WORKER_HOST_PORT:-8080}:8080'
-      # Metrics port — published only when METRICS_PORT is set in .env.
-      # Bind to 127.0.0.1 if you only want a local Prometheus scraper to
-      # reach it (recommended); leave bare for cluster-wide scraping.
-      # Uncomment after setting METRICS_PORT in .env:
-      #   - '127.0.0.1:${METRICS_PORT}:${METRICS_PORT}'
+      - "${WORKER_HOST_PORT:-8080}:8080"
     networks:
       - default
       - cf-tunnel
     logging:
       driver: json-file
       options:
-        max-size: '10m'
-        max-file: '5'
+        max-size: "10m"
+        max-file: "5"
     deploy:
       resources:
         limits:
-          cpus: '2'
+          cpus: "2"
           memory: 1g
     security_opt:
       - no-new-privileges:true
@@ -99,9 +115,5 @@ volumes:
 
 networks:
   default:
-  # External network shared with cloudflared's stack. The cloudflared
-  # tunnel config can then point at `http://openai-worker:8080`. Create
-  # it once on the VPS (`docker network create cf-tunnel`) before the
-  # first `up`.
   cf-tunnel:
     external: true
