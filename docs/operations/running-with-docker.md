@@ -67,8 +67,6 @@ Start from `worker.example.yaml` and set:
 - `payment_daemon.recipient_eth_address`
 - `payment_daemon.broker.mode: ethereum`
 - `payment_daemon.broker.rpc_url`
-- `payment_daemon.keystore.path`
-- `payment_daemon.store.path`
 - `worker.http_listen`
 - `worker.payment_daemon_socket`
 - `worker.max_concurrent_requests: 1`

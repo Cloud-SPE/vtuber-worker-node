@@ -35,17 +35,6 @@ payment_daemon:
     # you're on a fork.
     ticket_broker_contract: "0xa8bB618B1520E284046F3dFc448851A1Ff26e41B"
 
-  keystore:
-    path: /etc/livepeer/keystore.json
-    # compose.prod.yaml passes the password file via the daemon's
-    # --keystore-password-file flag, so this setting is informational
-    # unless you run the daemon outside compose.
-    passphrase_env: LIVEPEER_KEYSTORE_PASSPHRASE
-
-  store:
-    kind: bolt
-    path: /var/lib/livepeer/payment-daemon.db
-
 # ─── Worker-only section ────────────────────────────────────────────────
 # Parsed by vtuber-worker-node. Ignored by payment-daemon daemon.
 worker:
@@ -102,16 +91,12 @@ capabilities:
   - capability: "livepeer:vtuber-session"
     # Streaming sessions meter on wall-clock seconds, not tokens.
     # `paymentSession.Debit(units)` is called every 5s with units = 5.
-    # See: livepeer-modules-project/payment-daemon/docs/design-docs/streaming-session-pattern.md
-    # and ADR-006 in livepeer-vtuber-project for the cadence/grace defaults.
+    # The current payment-daemon allowlist explicitly accepts `second`
+    # for streaming workloads. See:
+    # livepeer-modules-project/payment-daemon/docs/design-docs/streaming-session-pattern.md
+    # and ADR-006 in livepeer-vtuber-project for the runtime cadence /
+    # grace defaults.
     work_unit: second
-
-    # ─── Streaming-only fields ───────────────────────────────────────────
-    # All optional; zero/absent means the consumer module's default
-    # (5s / 30s / 60s, matching ADR-006 in livepeer-vtuber-project).
-    debit_cadence_seconds: 5
-    sufficient_min_runway_seconds: 30
-    sufficient_grace_seconds: 60
 
     offerings:
       # GROWTH-PHASE DEFAULT — bridge keeps ~90% of revenue while
@@ -127,7 +112,7 @@ capabilities:
         # The session-runner's worker-facing HTTP endpoint. Co-deployed
         # with this binary — see compose.prod.yaml. Update host if you
         # split the runner onto a different machine.
-        backend_url: "http://REPLACE_WITH_SESSION_RUNNER_HOST:8080"
+        backend_url: "http://REPLACE_WITH_SESSION_RUNNER_HOST:8080/api/sessions/start"
 
       # Example of a premium tier — higher resolution / FPS / different
       # GPU class. The constraints blob is informational; the registry
@@ -135,7 +120,7 @@ capabilities:
       #
       # - id: "vtuber-premium-1440p60"
       #   price_per_work_unit_wei: "18750"
-      #   backend_url: "http://REPLACE_WITH_SESSION_RUNNER_HOST:8080"
+      #   backend_url: "http://REPLACE_WITH_SESSION_RUNNER_HOST:8080/api/sessions/start"
       #   constraints:
       #     gpu_class: "a100-40gb"
       #     resolution: "1440p"
