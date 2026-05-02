@@ -29,7 +29,7 @@ func TestPrometheus_HandlerExposesNamespace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 200 {
 		t.Fatalf("status: %d", resp.StatusCode)
 	}
@@ -77,7 +77,7 @@ func TestPrometheus_RegistryIsolated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body := readAll(t, resp)
 	if strings.Contains(body, "should_not_appear_on_worker_metrics") {
 		t.Fatalf("private registry leaked default-registerer metric")
@@ -94,7 +94,7 @@ func TestPrometheus_EmptyLabelBecomesUnset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body := readAll(t, resp)
 	mustContain(t, body, `outcome="`+LabelUnset+`"`)
 }
@@ -130,7 +130,7 @@ func TestPrometheus_CardinalityCapEnforced(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body := readAll(t, resp)
 	mustContain(t, body, `capability="a"`)
 	mustContain(t, body, `capability="b"`)
@@ -156,7 +156,7 @@ func TestPrometheus_CardinalityCapAppliesToAdd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body := readAll(t, resp)
 	mustContain(t, body, `livepeer_worker_work_units_total{capability="chat",model="model-a",unit="token"} 15`)
 	if strings.Contains(body, `model="model-b"`) {
@@ -183,7 +183,7 @@ func TestPrometheus_DaemonRPCDualHistogram(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body := readAll(t, resp)
 	// Both histograms must record the observation. Confirm count=1
 	// in each rather than just bucket presence so we know the call
@@ -204,7 +204,7 @@ func TestPrometheus_HistogramsRecord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body := readAll(t, resp)
 	mustContain(t, body, "livepeer_worker_request_duration_seconds_bucket")
 	mustContain(t, body, "livepeer_worker_backend_request_duration_seconds_bucket")
@@ -225,7 +225,7 @@ func TestPrometheus_GaugesSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body := readAll(t, resp)
 	mustContain(t, body, "livepeer_worker_inflight_requests 7")
 	mustContain(t, body, "livepeer_worker_max_concurrent 64")
@@ -245,7 +245,7 @@ func TestPrometheus_AddWorkUnits_NonPositiveSkipped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body := readAll(t, resp)
 	if strings.Contains(body, "livepeer_worker_work_units_total{") {
 		t.Fatalf("non-positive AddWorkUnits should not create a series")
@@ -263,7 +263,7 @@ func TestPrometheus_BackendErrorAccounting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body := readAll(t, resp)
 	mustContain(t, body, `livepeer_worker_backend_requests_total{capability="chat",model="m",outcome="error"} 1`)
 	mustContain(t, body, `livepeer_worker_backend_errors_total{capability="chat",error_class="timeout",model="m"} 1`)

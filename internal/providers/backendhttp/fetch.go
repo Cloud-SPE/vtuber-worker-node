@@ -55,7 +55,7 @@ func (c *fetchClient) DoRaw(ctx context.Context, url, contentType string, body [
 	if err != nil {
 		return 0, nil, fmt.Errorf("backendhttp: do: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	buf, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -81,7 +81,7 @@ func (c *fetchClient) DoStream(ctx context.Context, url string, body []byte) (in
 	// error (bridge sees the backend's own error body).
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		buf, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return resp.StatusCode, resp.Header, io.NopCloser(bytes.NewReader(buf)), nil
 	}
 	return resp.StatusCode, resp.Header, resp.Body, nil

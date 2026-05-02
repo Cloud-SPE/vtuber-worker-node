@@ -75,7 +75,7 @@ func TestServe_MetricsAndHealthz(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != 200 || !strings.Contains(string(body), "ok") {
 		t.Fatalf("/healthz: %d %q", resp.StatusCode, body)
 	}
@@ -85,7 +85,7 @@ func TestServe_MetricsAndHealthz(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ = io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if !strings.Contains(string(body), "livepeer_worker_requests_total") {
 		t.Fatalf("/metrics body missing namespace: %s", body)
 	}
@@ -95,7 +95,7 @@ func TestServe_MetricsAndHealthz(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ = io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if !strings.Contains(string(body), "vtuber-worker-node") {
 		t.Fatalf("root index unexpected: %s", body)
 	}
@@ -104,7 +104,7 @@ func TestServe_MetricsAndHealthz(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("unknown path: expected 404, got %d", resp.StatusCode)
 	}

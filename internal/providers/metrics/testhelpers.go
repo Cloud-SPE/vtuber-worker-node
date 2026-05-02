@@ -2,7 +2,6 @@ package metrics
 
 import (
 	"net/http"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -12,13 +11,9 @@ import (
 // packages reuse this in tests so they don't have to redefine a
 // Recorder stub for every package.
 //
-// Goroutine-safe: counters use atomic; map writes use the embedded mu.
-//
 // Not exported as part of the production API surface — file is
 // _testhelpers.go-style but kept buildable so go vet runs against it.
 type Counter struct {
-	mu sync.Mutex
-
 	Requests           atomic.Int64
 	RequestObserves    atomic.Int64
 	WorkUnitsAdds      atomic.Int64

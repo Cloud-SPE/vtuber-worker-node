@@ -3,8 +3,6 @@
 # /etc/livepeer/worker.yaml.
 #
 # Production deployments will:
-#   - Drop the `additional_contexts` block (the library will be a
-#     tagged Go module, not a sibling checkout).
 #   - Replace the fake broker mode with real `--chain-rpc` +
 #     `--keystore-path`.
 #   - Point backend_url entries at actual inference servers.
@@ -18,14 +16,7 @@
 
 services:
   payment-daemon:
-    # Pinned to the published image. The new-lineage source-of-truth
-    # is livepeer-modules-project/payment-daemon (its plan 0002), but
-    # the daemon Dockerfile there has a chain-commons-context gap;
-    # the published `tztcloud/livepeer-payment-daemon` image (cut from
-    # the standalone repo before it was folded) is what actually runs
-    # in dev. Switch to a new-lineage image tag is one env-var change
-    # once livepeer-modules-project's plan 0008 publishes.
-    image: tztcloud/livepeer-payment-daemon:${PAYMENT_DAEMON_IMAGE_TAG:-v0.8.10}
+    image: tztcloud/livepeer-payment-daemon:${PAYMENT_DAEMON_IMAGE_TAG:-v3.1.7}
     command:
       - "--mode=receiver"
       - "--socket=/var/run/livepeer/payment-daemon.sock"
@@ -40,21 +31,7 @@ services:
 
   vtuber-worker:
     build:
-      # Default context = this repo.
       context: .
-      # Expose the modules-project siblings to the build. Required
-      # while go.mod has `replace` directives; all three drop out
-      # once livepeer-modules-project publishes tagged Go modules
-      # (its plan 0008).
-      #
-      # `chain_commons` is needed because both daemons transitively
-      # replace it in their own go.mod files; Go's replace doesn't
-      # propagate from libraries, so the worker's go.mod has its own
-      # chain-commons replace and the build needs the dir present.
-      additional_contexts:
-        library: ../livepeer-modules-project/payment-daemon
-        registry: ../livepeer-modules-project/service-registry-daemon
-        chain_commons: ../livepeer-modules-project/chain-commons
     command:
       - "--config=/etc/livepeer/worker.yaml"
       - "--log-level=info"

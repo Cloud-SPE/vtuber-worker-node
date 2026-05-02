@@ -73,7 +73,7 @@ func run(args []string, stderr *os.File) int {
 	slog.SetDefault(logger)
 
 	if err := validateMetricsListen(*metricsListen); err != nil {
-		fmt.Fprintf(stderr, "invalid --metrics-listen %q: %v\n", *metricsListen, err)
+		_, _ = fmt.Fprintf(stderr, "invalid --metrics-listen %q: %v\n", *metricsListen, err)
 		return 2
 	}
 
@@ -360,7 +360,7 @@ func buildLogger(level string, out *os.File) *slog.Logger {
 		lv = slog.LevelError
 	default:
 		lv = slog.LevelInfo
-		fmt.Fprintf(out, "unknown --log-level %q; defaulting to info\n", level)
+		_, _ = fmt.Fprintf(out, "unknown --log-level %q; defaulting to info\n", level)
 	}
 	return slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{Level: lv}))
 }
