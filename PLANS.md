@@ -7,6 +7,7 @@ Index of execution plans against this repo. Plans are first-class artifacts chec
 | Plan | Purpose |
 |---|---|
 | [0001-v3-archetype-a-alignment](docs/exec-plans/active/0001-v3-archetype-a-alignment.md) | Earlier repo-local v3 alignment draft. Retained as active history until explicitly completed or superseded. |
+| [0003-standalone-ci-and-release-alignment](docs/exec-plans/active/0003-standalone-ci-and-release-alignment.md) | Normalize required PR checks and add standalone tag-driven image release workflow with no sibling checkout assumptions. |
 
 ## Completed
 
