@@ -35,14 +35,14 @@ type Prometheus struct {
 	cfg PrometheusConfig
 
 	// Counters
-	requests            *capVec
-	workUnits           *capVec
-	daemonRPCCalls      *capVec
-	backendRequests     *capVec
-	backendErrors       *capVec
-	tokenizerCalls      *capVec
-	capacityRejections  *capVec
-	paymentRejections   *capVec
+	requests           *capVec
+	workUnits          *capVec
+	daemonRPCCalls     *capVec
+	backendRequests    *capVec
+	backendErrors      *capVec
+	tokenizerCalls     *capVec
+	capacityRejections *capVec
+	paymentRejections  *capVec
 
 	// Histograms
 	requestDuration       *prometheus.HistogramVec
@@ -51,11 +51,11 @@ type Prometheus struct {
 	backendDuration       *prometheus.HistogramVec
 
 	// Gauges
-	inflightRequests    prometheus.Gauge
-	backendLastSuccess  *prometheus.GaugeVec
-	uptimeSeconds       prometheus.Gauge
-	buildInfo           *prometheus.GaugeVec
-	maxConcurrent       prometheus.Gauge
+	inflightRequests   prometheus.Gauge
+	backendLastSuccess *prometheus.GaugeVec
+	uptimeSeconds      prometheus.Gauge
+	buildInfo          *prometheus.GaugeVec
+	maxConcurrent      prometheus.Gauge
 }
 
 // NewPrometheus constructs the Prometheus Recorder. It also installs

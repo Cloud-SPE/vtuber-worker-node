@@ -19,32 +19,32 @@ import (
 type Counter struct {
 	mu sync.Mutex
 
-	Requests            atomic.Int64
-	RequestObserves     atomic.Int64
-	WorkUnitsAdds       atomic.Int64
-	WorkUnitsTotal      atomic.Int64
-	DaemonRPCCalls      atomic.Int64
-	DaemonRPCObserves   atomic.Int64
-	BackendRequests     atomic.Int64
-	BackendObserves     atomic.Int64
-	BackendErrors       atomic.Int64
-	TokenizerCalls      atomic.Int64
-	CapacityRejections  atomic.Int64
-	PaymentRejections   atomic.Int64
+	Requests           atomic.Int64
+	RequestObserves    atomic.Int64
+	WorkUnitsAdds      atomic.Int64
+	WorkUnitsTotal     atomic.Int64
+	DaemonRPCCalls     atomic.Int64
+	DaemonRPCObserves  atomic.Int64
+	BackendRequests    atomic.Int64
+	BackendObserves    atomic.Int64
+	BackendErrors      atomic.Int64
+	TokenizerCalls     atomic.Int64
+	CapacityRejections atomic.Int64
+	PaymentRejections  atomic.Int64
 
-	InflightV       atomic.Int64
-	MaxConcurrentV  atomic.Int64
+	InflightV      atomic.Int64
+	MaxConcurrentV atomic.Int64
 
 	// LastReason fields capture the most recent label value for
 	// assertions in package tests.
-	LastRequestOutcome     atomic.Value // string
-	LastDaemonRPCMethod    atomic.Value // string
-	LastDaemonRPCOutcome   atomic.Value // string
-	LastBackendOutcome     atomic.Value // string
-	LastBackendErrorClass  atomic.Value // string
-	LastPaymentReason      atomic.Value // string
-	LastTokenizerOutcome   atomic.Value // string
-	LastWorkUnitsUnit      atomic.Value // string
+	LastRequestOutcome    atomic.Value // string
+	LastDaemonRPCMethod   atomic.Value // string
+	LastDaemonRPCOutcome  atomic.Value // string
+	LastBackendOutcome    atomic.Value // string
+	LastBackendErrorClass atomic.Value // string
+	LastPaymentReason     atomic.Value // string
+	LastTokenizerOutcome  atomic.Value // string
+	LastWorkUnitsUnit     atomic.Value // string
 }
 
 // NewCounter returns a fresh Counter recorder.

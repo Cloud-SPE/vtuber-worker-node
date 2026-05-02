@@ -347,7 +347,6 @@ func missingCapabilityModules(mux *rthttp.Mux, cfg *config.Config) []types.Capab
 	return missing
 }
 
-
 func buildLogger(level string, out *os.File) *slog.Logger {
 	var lv slog.Level
 	switch level {

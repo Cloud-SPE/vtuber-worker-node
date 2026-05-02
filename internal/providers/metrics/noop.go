@@ -19,22 +19,22 @@ type Noop struct{}
 // future stateful additions don't change call sites.
 func NewNoop() *Noop { return &Noop{} }
 
-func (*Noop) IncRequest(_, _, _ string)                              {}
-func (*Noop) ObserveRequest(_, _, _ string, _ time.Duration)         {}
-func (*Noop) AddWorkUnits(_, _, _ string, _ int64)                   {}
-func (*Noop) IncDaemonRPC(_, _ string)                               {}
-func (*Noop) ObserveDaemonRPC(_, _ string, _ time.Duration)          {}
-func (*Noop) IncBackendRequest(_, _, _ string)                       {}
-func (*Noop) ObserveBackendRequest(_, _ string, _ time.Duration)     {}
-func (*Noop) IncBackendError(_, _, _ string)                         {}
-func (*Noop) SetBackendLastSuccess(_, _ string, _ time.Time)         {}
-func (*Noop) IncTokenizerCall(_, _ string)                           {}
-func (*Noop) IncCapacityRejection(_ string)                          {}
-func (*Noop) SetInflightRequests(_ int)                              {}
-func (*Noop) IncPaymentRejection(_ string)                           {}
-func (*Noop) SetUptimeSeconds(_ float64)                             {}
-func (*Noop) SetBuildInfo(_ string, _ string, _ string)              {}
-func (*Noop) SetMaxConcurrent(_ int)                                 {}
+func (*Noop) IncRequest(_, _, _ string)                          {}
+func (*Noop) ObserveRequest(_, _, _ string, _ time.Duration)     {}
+func (*Noop) AddWorkUnits(_, _, _ string, _ int64)               {}
+func (*Noop) IncDaemonRPC(_, _ string)                           {}
+func (*Noop) ObserveDaemonRPC(_, _ string, _ time.Duration)      {}
+func (*Noop) IncBackendRequest(_, _, _ string)                   {}
+func (*Noop) ObserveBackendRequest(_, _ string, _ time.Duration) {}
+func (*Noop) IncBackendError(_, _, _ string)                     {}
+func (*Noop) SetBackendLastSuccess(_, _ string, _ time.Time)     {}
+func (*Noop) IncTokenizerCall(_, _ string)                       {}
+func (*Noop) IncCapacityRejection(_ string)                      {}
+func (*Noop) SetInflightRequests(_ int)                          {}
+func (*Noop) IncPaymentRejection(_ string)                       {}
+func (*Noop) SetUptimeSeconds(_ float64)                         {}
+func (*Noop) SetBuildInfo(_ string, _ string, _ string)          {}
+func (*Noop) SetMaxConcurrent(_ int)                             {}
 
 // Handler returns a 404-everywhere handler.
 func (*Noop) Handler() http.Handler {
