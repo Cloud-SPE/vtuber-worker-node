@@ -127,19 +127,7 @@ func paymentMiddleware(deps paidRouteDeps) http.HandlerFunc {
 		// 3. work_id.
 		workID := deriveWorkID(paymentBytes)
 
-		// 4. ProcessPayment.
-		pp, err := deps.payee.ProcessPayment(ctx, paymentBytes, string(workID))
-		if err != nil {
-			deps.logger.Warn("ProcessPayment rejected",
-				"capability", deps.module.Capability(),
-				"work_id", workID,
-				"err", err)
-			rec.IncPaymentRejection(metrics.PaymentRejectProcessPayment)
-			writeJSONError(sw, http.StatusPaymentRequired, "payment_rejected", err.Error())
-			return
-		}
-
-		// 5. Extract model + resolve route.
+		// 4. Extract model + resolve route.
 		model, err := deps.module.ExtractModel(body)
 		if err != nil {
 			writeJSONError(sw, http.StatusBadRequest, "invalid_request", "could not extract model from request body: "+err.Error())
@@ -149,6 +137,40 @@ func paymentMiddleware(deps paidRouteDeps) http.HandlerFunc {
 		route, ok := deps.cfg.Lookup(deps.module.Capability(), model)
 		if !ok {
 			writeJSONError(sw, http.StatusNotFound, "capability_not_found", "no backend configured for capability="+string(deps.module.Capability())+" model="+string(model))
+			return
+		}
+		pricePerUnit, ok := new(big.Int).SetString(route.PricePerWorkUnitWei, 10)
+		if !ok {
+			writeJSONError(sw, http.StatusInternalServerError, "internal_error", "invalid route price_per_work_unit_wei")
+			return
+		}
+
+		// 5. OpenSession + ProcessPayment.
+		if _, err := deps.payee.OpenSession(ctx, payeedaemon.OpenSessionRequest{
+			WorkID:              string(workID),
+			Capability:          string(deps.module.Capability()),
+			Offering:            string(route.Offering),
+			PricePerWorkUnitWei: pricePerUnit,
+			WorkUnit:            string(route.WorkUnit),
+		}); err != nil {
+			deps.logger.Warn("OpenSession rejected",
+				"capability", deps.module.Capability(),
+				"model", model,
+				"work_id", workID,
+				"err", err)
+			rec.IncPaymentRejection(metrics.PaymentRejectProcessPayment)
+			writeJSONError(sw, http.StatusPaymentRequired, "payment_rejected", "OpenSession: "+err.Error())
+			return
+		}
+		pp, err := deps.payee.ProcessPayment(ctx, paymentBytes, string(workID))
+		if err != nil {
+			deps.logger.Warn("ProcessPayment rejected",
+				"capability", deps.module.Capability(),
+				"model", model,
+				"work_id", workID,
+				"err", err)
+			rec.IncPaymentRejection(metrics.PaymentRejectProcessPayment)
+			writeJSONError(sw, http.StatusPaymentRequired, "payment_rejected", err.Error())
 			return
 		}
 
@@ -163,7 +185,7 @@ func paymentMiddleware(deps paidRouteDeps) http.HandlerFunc {
 		}
 
 		// 7. DebitBalance upfront.
-		db, err := deps.payee.DebitBalance(ctx, pp.Sender, string(workID), estimate)
+		db, err := deps.payee.DebitBalance(ctx, pp.Sender, string(workID), estimate, 1)
 		if err != nil {
 			rec.IncPaymentRejection(metrics.PaymentRejectDebitError)
 			writeJSONError(sw, http.StatusBadGateway, "backend_unavailable", "DebitBalance: "+err.Error())
@@ -206,7 +228,7 @@ func paymentMiddleware(deps paidRouteDeps) http.HandlerFunc {
 		// 9. Reconcile over-debit.
 		if actual > estimate {
 			delta := actual - estimate
-			if _, err := deps.payee.DebitBalance(ctx, pp.Sender, string(workID), delta); err != nil {
+			if _, err := deps.payee.DebitBalance(ctx, pp.Sender, string(workID), delta, 2); err != nil {
 				// Logged, not surfaced — the response is already sent.
 				deps.logger.Warn("reconcile DebitBalance error",
 					"capability", deps.module.Capability(),

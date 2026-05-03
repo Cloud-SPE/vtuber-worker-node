@@ -77,7 +77,7 @@ type StreamingModule interface {
 // implemented, the worker's /api/sessions/{gateway_session_id}/end
 // route calls TerminateSession before releasing payment-daemon state.
 type SessionTerminator interface {
-	TerminateSession(ctx context.Context, gatewaySessionID string) error
+	TerminateSession(ctx context.Context, gatewaySessionID string, backendURL string) error
 }
 
 // PaymentSession is the per-session handle a StreamingModule uses to

@@ -2,6 +2,30 @@ package payeedaemon
 
 import "math/big"
 
+// OpenSessionRequest is the worker-side projection of the proposed
+// payment-daemon OpenSession RPC. The session is identified by workID
+// before the first successful ProcessPayment binds a sender.
+type OpenSessionRequest struct {
+	WorkID              string
+	Capability          string
+	Offering            string
+	PricePerWorkUnitWei *big.Int
+	WorkUnit            string
+}
+
+// OpenSessionOutcome mirrors the daemon's OpenSessionResponse outcome.
+type OpenSessionOutcome string
+
+const (
+	OpenSessionOutcomeOpened      OpenSessionOutcome = "opened"
+	OpenSessionOutcomeAlreadyOpen OpenSessionOutcome = "already_open"
+)
+
+// OpenSessionResult is the domain projection of OpenSessionResponse.
+type OpenSessionResult struct {
+	Outcome OpenSessionOutcome
+}
+
 // ProcessPaymentResult is the domain projection of
 // paymentsv1.ProcessPaymentResponse. Wei values are *big.Int because
 // every consumer (middleware reconciliation, balance checks, logs)

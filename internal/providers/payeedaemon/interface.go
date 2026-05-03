@@ -35,18 +35,21 @@ type Client interface {
 	// this only as a thin HTTP proxy for the gateway-side payment flow.
 	GetTicketParams(ctx context.Context, req GetTicketParamsRequest) (TicketParams, error)
 
+	// OpenSession creates or replays a pending session binding for a
+	// workID before the first successful ProcessPayment fixes the sender.
+	OpenSession(ctx context.Context, req OpenSessionRequest) (OpenSessionResult, error)
+
 	// ProcessPayment validates a payment blob and credits the sender's
-	// balance. The workID identifies the session the credit posts to;
-	// typically the worker derives it from the payment (e.g. the
-	// RecipientRandHash hex) so a sender + capability pair collapses
-	// to a single long-lived session.
+	// balance. Under the authoritative session-pricing contract the
+	// workID identifies a session that must already have been opened via
+	// OpenSession; the first successful ProcessPayment binds the sender.
 	ProcessPayment(ctx context.Context, paymentBytes []byte, workID string) (ProcessPaymentResult, error)
 
 	// DebitBalance subtracts workUnits from the (sender, workID)
 	// balance. Returns the new balance; a negative balance means the
 	// caller over-debited and must refuse to serve further work on
 	// this session.
-	DebitBalance(ctx context.Context, sender []byte, workID string, workUnits int64) (DebitBalanceResult, error)
+	DebitBalance(ctx context.Context, sender []byte, workID string, workUnits int64, debitSeq uint64) (DebitBalanceResult, error)
 
 	// SufficientBalance reports whether (sender, workID) has at
 	// least minWorkUnits of remaining balance. Cheap; does not modify
@@ -119,6 +122,18 @@ func (m *meteredClient) GetTicketParams(ctx context.Context, req GetTicketParams
 	return res, err
 }
 
+func (m *meteredClient) OpenSession(ctx context.Context, req OpenSessionRequest) (OpenSessionResult, error) {
+	start := time.Now()
+	res, err := m.inner.OpenSession(ctx, req)
+	outcome := metrics.OutcomeOK
+	if err != nil {
+		outcome = metrics.OutcomeError
+	}
+	m.rec.IncDaemonRPC(metrics.MethodOpenSession, outcome)
+	m.rec.ObserveDaemonRPC(metrics.MethodOpenSession, outcome, time.Since(start))
+	return res, err
+}
+
 func (m *meteredClient) ProcessPayment(ctx context.Context, paymentBytes []byte, workID string) (ProcessPaymentResult, error) {
 	start := time.Now()
 	res, err := m.inner.ProcessPayment(ctx, paymentBytes, workID)
@@ -131,9 +146,9 @@ func (m *meteredClient) ProcessPayment(ctx context.Context, paymentBytes []byte,
 	return res, err
 }
 
-func (m *meteredClient) DebitBalance(ctx context.Context, sender []byte, workID string, workUnits int64) (DebitBalanceResult, error) {
+func (m *meteredClient) DebitBalance(ctx context.Context, sender []byte, workID string, workUnits int64, debitSeq uint64) (DebitBalanceResult, error) {
 	start := time.Now()
-	res, err := m.inner.DebitBalance(ctx, sender, workID, workUnits)
+	res, err := m.inner.DebitBalance(ctx, sender, workID, workUnits, debitSeq)
 	outcome := metrics.OutcomeOK
 	if err != nil {
 		outcome = metrics.OutcomeError

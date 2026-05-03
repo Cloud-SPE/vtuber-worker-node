@@ -9,6 +9,9 @@ Sibling repo of [`openai-worker-node`](https://github.com/Cloud-SPE/openai-worke
 Implements the `livepeer:vtuber-session` worker contract end-to-end:
 
 - payment-daemon receiver integration
+- local proto-owned payment-daemon wire contract; no upstream Go-module import
+- explicit `OpenSession` before first credit, with first successful `ProcessPayment` binding sender
+- retry-stable `DebitBalance(sender, work_id, work_units, debit_seq)`
 - `offerings` advertisement and ticket-params surface
 - worker open/topup/end session routes
 - local `session-runner` backend forwarding
@@ -35,6 +38,7 @@ worker.example.yaml        # annotated example config
 compose.yaml               # dev compose: payment-daemon + worker
 compose.prod.yaml          # production compose template
 Dockerfile                 # build artifact
+proto/                     # local payment-daemon wire contract snapshot
 ```
 
 ## Build + test

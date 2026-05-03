@@ -14,9 +14,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Cloud-SPE/vtuber-worker-node/internal/config"
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/providers/metrics"
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/providers/payeedaemon"
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/service/modules"
+	"github.com/Cloud-SPE/vtuber-worker-node/internal/types"
 )
 
 // RegisterStreamingRoute wraps a StreamingModule in the streaming-
@@ -40,6 +42,7 @@ func (m *Mux) RegisterStreamingRoute(mod modules.StreamingModule) {
 
 	handler := streamingMiddleware(streamingDeps{
 		module:   mod,
+		cfg:      m.cfg,
 		payee:    m.payee,
 		sem:      m.paidSem,
 		logger:   m.logger,
@@ -69,6 +72,7 @@ func (m *Mux) RegisterStreamingRoute(mod modules.StreamingModule) {
 // streaming middleware closure.
 type streamingDeps struct {
 	module   modules.StreamingModule
+	cfg      *config.Config
 	payee    payeedaemon.Client
 	sem      chan struct{}
 	logger   *slog.Logger
@@ -141,12 +145,42 @@ func streamingMiddleware(d streamingDeps) http.HandlerFunc {
 		}
 		r.Header.Set("X-Vtuber-Session-Id", gatewaySessionID)
 
-		// 4. ProcessPayment → seeds the (sender, work_id) balance.
-		workID := string(deriveWorkID(paymentBytes))
-		workerSessionID := deriveWorkerSessionID(workID)
-		r.Header.Set("X-Vtuber-Worker-Session-Id", workerSessionID)
-		r.Header.Set("X-Vtuber-Work-Id", workID)
-		ppRes, err := d.payee.ProcessPayment(r.Context(), paymentBytes, workID)
+			offering, err := extractStreamingOffering(r, body)
+			if err != nil {
+				http.Error(w, "invalid offering: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			route, ok := d.cfg.Lookup(d.module.Capability(), types.ModelID(offering))
+			if !ok {
+				http.Error(w, "unknown offering: "+offering, http.StatusNotFound)
+				return
+			}
+			r.Header.Set("X-Vtuber-Offering", offering)
+			r.Header.Set("X-Vtuber-Backend-Url", route.BackendURL)
+
+			// 4. OpenSession + ProcessPayment.
+			workID := string(deriveWorkID(paymentBytes))
+			workerSessionID := deriveWorkerSessionID(workID)
+			r.Header.Set("X-Vtuber-Worker-Session-Id", workerSessionID)
+			r.Header.Set("X-Vtuber-Work-Id", workID)
+			pricePerUnit, ok := new(big.Int).SetString(route.PricePerWorkUnitWei, 10)
+			if !ok {
+				http.Error(w, "invalid route price_per_work_unit_wei", http.StatusInternalServerError)
+				return
+			}
+			if _, err := d.payee.OpenSession(r.Context(), payeedaemon.OpenSessionRequest{
+				WorkID:              workID,
+				Capability:          string(route.Capability),
+				Offering:            string(route.Offering),
+				PricePerWorkUnitWei: pricePerUnit,
+				WorkUnit:            string(route.WorkUnit),
+			}); err != nil {
+				d.logger.Warn("streaming: OpenSession failed",
+					"err", err, "capability", d.module.Capability(), "offering", offering)
+				http.Error(w, "OpenSession: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			ppRes, err := d.payee.ProcessPayment(r.Context(), paymentBytes, workID)
 		if err != nil {
 			d.logger.Warn("streaming: ProcessPayment failed",
 				"err", err, "capability", d.module.Capability())
@@ -155,12 +189,13 @@ func streamingMiddleware(d streamingDeps) http.HandlerFunc {
 		}
 
 		// 5. Construct the PaymentSession adapter for this session.
-		d.sessions.Upsert(streamingSessionInfo{
-			GatewaySessionID: gatewaySessionID,
-			WorkerSessionID:  workerSessionID,
-			WorkID:           workID,
-			Sender:           ppRes.Sender,
-		})
+			d.sessions.Upsert(streamingSessionInfo{
+				GatewaySessionID: gatewaySessionID,
+				WorkerSessionID:  workerSessionID,
+				WorkID:           workID,
+				BackendURL:       route.BackendURL,
+				Sender:           ppRes.Sender,
+			})
 		ps := newPaymentSessionAdapter(d.payee, ppRes.Sender, workID, d.recorder, func() {
 			d.sessions.Delete(gatewaySessionID)
 		})
@@ -247,7 +282,7 @@ func newPaymentSessionAdapter(c payeedaemon.Client, sender []byte, workID string
 }
 
 func (p *paymentSessionAdapter) Debit(ctx context.Context, units uint64, debitSeq uint64) (int64, error) {
-	res, err := p.payee.DebitBalance(ctx, p.sender, p.workID, int64(units))
+	res, err := p.payee.DebitBalance(ctx, p.sender, p.workID, int64(units), debitSeq)
 	if err != nil {
 		return 0, err
 	}
@@ -331,7 +366,7 @@ func streamingEndHandler(
 		}
 		if terminator != nil {
 			closeCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-			err := terminator.TerminateSession(closeCtx, gatewaySessionID)
+				err := terminator.TerminateSession(closeCtx, gatewaySessionID, info.BackendURL)
 			cancel()
 			if err != nil {
 				http.Error(w, "backend stop: "+err.Error(), http.StatusBadGateway)
@@ -375,6 +410,25 @@ func extractGatewaySessionID(r *http.Request, body []byte) (string, error) {
 		return id, nil
 	}
 	return "", errors.New("missing gateway_session_id or session_id")
+}
+
+func extractStreamingOffering(r *http.Request, body []byte) (string, error) {
+	if r == nil {
+		return "", errors.New("nil request")
+	}
+	if offering := strings.TrimSpace(r.Header.Get("X-Vtuber-Offering")); offering != "" {
+		return offering, nil
+	}
+	var payload struct {
+		Offering string `json:"offering"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return "", errors.New("missing X-Vtuber-Offering header")
+	}
+	if offering := strings.TrimSpace(payload.Offering); offering != "" {
+		return offering, nil
+	}
+	return "", errors.New("missing X-Vtuber-Offering header")
 }
 
 func deriveWorkerSessionID(workID string) string {

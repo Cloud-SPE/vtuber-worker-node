@@ -3,6 +3,7 @@ package payeedaemon
 import (
 	"context"
 	"errors"
+	"math/big"
 	"testing"
 
 	"github.com/Cloud-SPE/vtuber-worker-node/internal/providers/metrics"
@@ -69,7 +70,17 @@ func TestMeteredClient_GetQuoteError(t *testing.T) {
 
 func TestMeteredClient_ProcessPaymentOK(t *testing.T) {
 	rec := metrics.NewCounter()
-	c := WithMetrics(NewFake(), rec)
+	inner := NewFake()
+	if _, err := inner.OpenSession(context.Background(), OpenSessionRequest{
+		WorkID:              "wid",
+		Capability:          "livepeer:vtuber-session",
+		Offering:            "vtuber-default-1080p30",
+		PricePerWorkUnitWei: big.NewInt(1),
+		WorkUnit:            "second",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c := WithMetrics(inner, rec)
 	if _, err := c.ProcessPayment(context.Background(), []byte{1}, "wid"); err != nil {
 		t.Fatal(err)
 	}
@@ -97,6 +108,15 @@ func TestMeteredClient_ProcessPaymentError(t *testing.T) {
 func TestMeteredClient_DebitBalanceOK(t *testing.T) {
 	rec := metrics.NewCounter()
 	inner := NewFake()
+	if _, err := inner.OpenSession(context.Background(), OpenSessionRequest{
+		WorkID:              "wid",
+		Capability:          "livepeer:vtuber-session",
+		Offering:            "vtuber-default-1080p30",
+		PricePerWorkUnitWei: big.NewInt(1),
+		WorkUnit:            "second",
+	}); err != nil {
+		t.Fatal(err)
+	}
 	// Pre-credit so DebitBalance has a balance to debit; not strictly
 	// needed (the fake doesn't gate on balance), but mirrors realistic
 	// usage.
@@ -104,7 +124,7 @@ func TestMeteredClient_DebitBalanceOK(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := WithMetrics(inner, rec)
-	if _, err := c.DebitBalance(context.Background(), inner.SenderAddress, "wid", 1); err != nil {
+	if _, err := c.DebitBalance(context.Background(), inner.SenderAddress, "wid", 1, 1); err != nil {
 		t.Fatal(err)
 	}
 	if got := rec.LastDaemonRPCMethod.Load(); got != metrics.MethodDebitBalance {
@@ -120,7 +140,7 @@ func TestMeteredClient_DebitBalanceError(t *testing.T) {
 	inner := NewFake()
 	inner.DebitBalanceError = errors.New("boom")
 	c := WithMetrics(inner, rec)
-	if _, err := c.DebitBalance(context.Background(), nil, "", 1); err == nil {
+	if _, err := c.DebitBalance(context.Background(), nil, "", 1, 1); err == nil {
 		t.Fatal("expected error")
 	}
 	if got := rec.LastDaemonRPCOutcome.Load(); got != metrics.OutcomeError {
@@ -163,7 +183,7 @@ func TestMeteredClient_ObserveCountMatchesIncCount(t *testing.T) {
 	_, _ = c.ListCapabilities(ctx)
 	_, _ = c.GetQuote(ctx, nil, "x")
 	_, _ = c.ProcessPayment(ctx, []byte{1}, "w")
-	_, _ = c.DebitBalance(ctx, nil, "w", 0)
+	_, _ = c.DebitBalance(ctx, nil, "w", 0, 1)
 
 	// Trigger an error path too.
 	inner.ProcessPaymentError = errors.New("boom")

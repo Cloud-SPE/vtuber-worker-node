@@ -166,18 +166,20 @@ type streamingSessionInfo struct {
 	GatewaySessionID string
 	WorkerSessionID  string
 	WorkID           string
+	BackendURL       string
 	Sender           []byte
 }
 
 func (r *streamingSessionRegistry) Upsert(info streamingSessionInfo) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.byGatewayID[info.GatewaySessionID] = streamingSessionInfo{
-		GatewaySessionID: info.GatewaySessionID,
-		WorkerSessionID:  info.WorkerSessionID,
-		WorkID:           info.WorkID,
-		Sender:           append([]byte(nil), info.Sender...),
-	}
+		r.byGatewayID[info.GatewaySessionID] = streamingSessionInfo{
+			GatewaySessionID: info.GatewaySessionID,
+			WorkerSessionID:  info.WorkerSessionID,
+			WorkID:           info.WorkID,
+			BackendURL:       info.BackendURL,
+			Sender:           append([]byte(nil), info.Sender...),
+		}
 }
 
 func (r *streamingSessionRegistry) Get(gatewaySessionID string) (streamingSessionInfo, bool) {

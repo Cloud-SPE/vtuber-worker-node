@@ -12,9 +12,9 @@ type CapabilityID string
 // what it accepts.
 type ModelID string
 
-// WorkUnit identifies the metering unit for a capability. The library
-// treats it as opaque int64 at DebitBalance; this typed constant set
-// is for clarity in worker code and logs only.
+// WorkUnit identifies the metering unit bound authoritatively on the
+// payee side for a capability/session. This typed constant set is for
+// clarity in worker code, config validation, and logs.
 type WorkUnit string
 
 const (

@@ -4,7 +4,11 @@ This file is intentionally short. The full design lives upstream at [`livepeer-v
 
 ## One-paragraph summary
 
-`vtuber-worker-node` terminates session-open requests from `vtuber-livepeer-bridge`, validates the attached payment via a co-located [`livepeer-modules-project/payment-daemon`](https://github.com/Cloud-SPE/livepeer-modules-project/tree/main/payment-daemon) receiver daemon, instantiates a `StreamingModule` for the requested capability, and forwards to the local [`session-runner`](https://github.com/Cloud-SPE/livepeer-vtuber-project/tree/main/session-runner) backend over localhost HTTP. The module owns the session lifetime: it debits balance every 5s via `paymentSession.Debit`, emits `session.balance.low` on the WebSocket back to the bridge if `paymentSession.Sufficient` returns false, and calls `paymentSession.Close` exactly once before returning.
+`vtuber-worker-node` terminates session-open requests from `vtuber-livepeer-bridge`, opens the authoritative payee-side session binding via a co-located [`livepeer-modules-project/payment-daemon`](https://github.com/Cloud-SPE/livepeer-modules-project/tree/main/payment-daemon) receiver daemon, validates and credits the attached payment, instantiates a `StreamingModule` for the requested capability, and forwards to the local [`session-runner`](https://github.com/Cloud-SPE/livepeer-vtuber-project/tree/main/session-runner) backend over localhost HTTP. The module owns the session lifetime: it debits balance every 5s via retry-stable `paymentSession.Debit(units, debitSeq)`, emits `session.balance.low` on the WebSocket back to the bridge if `paymentSession.Sufficient` returns false, and calls `paymentSession.Close` exactly once before returning.
+
+This repo consumes payment-daemon as a wire contract, not an upstream Go
+module. The proto snapshot and generated stubs are owned locally so worker
+releases are not coupled to the daemon repo's Go submodule tagging.
 
 ## Position in the stack
 
@@ -33,6 +37,7 @@ repo/         # (empty — no persistence in this domain)
 service/      # business logic (capability modules)
 runtime/      # process entry, mux, payment middleware, /metrics
 providers/    # cross-cutting (payment-daemon client, backend HTTP, recorder)
+contract/     # locally owned gRPC contract snapshot for payment-daemon
 ```
 
 The custom analyzer `lint/payment-middleware-check` enforces that capability modules cannot bypass the middleware.

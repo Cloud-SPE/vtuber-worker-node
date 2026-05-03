@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	paymentsv1 "github.com/Cloud-SPE/livepeer-modules-project/payment-daemon/proto/gen/go/livepeer/payments/v1"
+	paymentsv1 "github.com/Cloud-SPE/vtuber-worker-node/internal/contract/paymentsv1"
 )
 
 // grpcClient is the production Client, talking to the daemon over a
@@ -42,6 +42,27 @@ func (c *grpcClient) Close() error {
 		return nil
 	}
 	return c.conn.Close()
+}
+
+func (c *grpcClient) OpenSession(ctx context.Context, req OpenSessionRequest) (OpenSessionResult, error) {
+	resp, err := c.client.OpenSession(ctx, &paymentsv1.OpenSessionRequest{
+		WorkId:              req.WorkID,
+		Capability:          req.Capability,
+		Offering:            req.Offering,
+		PricePerWorkUnitWei: req.PricePerWorkUnitWei.Bytes(),
+		WorkUnit:            req.WorkUnit,
+	})
+	if err != nil {
+		return OpenSessionResult{}, fmt.Errorf("payeedaemon: OpenSession: %w", err)
+	}
+	switch resp.GetOutcome() {
+	case paymentsv1.OpenSessionResponse_OUTCOME_OPENED:
+		return OpenSessionResult{Outcome: OpenSessionOutcomeOpened}, nil
+	case paymentsv1.OpenSessionResponse_OUTCOME_ALREADY_OPEN:
+		return OpenSessionResult{Outcome: OpenSessionOutcomeAlreadyOpen}, nil
+	default:
+		return OpenSessionResult{}, fmt.Errorf("payeedaemon: OpenSession: unexpected outcome %s", resp.GetOutcome().String())
+	}
 }
 
 func (c *grpcClient) ListCapabilities(ctx context.Context) (ListCapabilitiesResult, error) {
@@ -147,12 +168,14 @@ func (c *grpcClient) GetTicketParams(ctx context.Context, req GetTicketParamsReq
 	}, nil
 }
 
-func (c *grpcClient) DebitBalance(ctx context.Context, sender []byte, workID string, workUnits int64) (DebitBalanceResult, error) {
-	resp, err := c.client.DebitBalance(ctx, &paymentsv1.DebitBalanceRequest{
+func (c *grpcClient) DebitBalance(ctx context.Context, sender []byte, workID string, workUnits int64, debitSeq uint64) (DebitBalanceResult, error) {
+	req := &paymentsv1.DebitBalanceRequest{
 		Sender:    sender,
 		WorkId:    workID,
 		WorkUnits: workUnits,
-	})
+		DebitSeq:  debitSeq,
+	}
+	resp, err := c.client.DebitBalance(ctx, req)
 	if err != nil {
 		return DebitBalanceResult{}, fmt.Errorf("payeedaemon: DebitBalance: %w", err)
 	}

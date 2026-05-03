@@ -201,7 +201,8 @@ func (m *Module) Serve(ctx context.Context, req *http.Request, ps modules.Paymen
 	cfg := m.cfg
 	cfg.IDGen = idGen
 	logger := cfg.Logger.With(slog.String("session_id", sessionID))
-	logger.Info("vtuber_session: starting", "backend_url", cfg.BackendURL)
+	backendURL := backendURLForRequest(req, cfg.BackendURL)
+	logger.Info("vtuber_session: starting", "backend_url", backendURL)
 
 	s := &session{
 		cfg:             cfg,
@@ -236,7 +237,7 @@ func (m *Module) Serve(ctx context.Context, req *http.Request, ps modules.Paymen
 	// 1. Forward session-open to the backend. If this fails we don't
 	// even reach the running state — emit error, mark fatal, return.
 	openCtx, openCancel := context.WithTimeout(ctx, 30*time.Second)
-	if err := cfg.Backend.OpenSession(openCtx, req, cfg.BackendURL); err != nil {
+	if err := cfg.Backend.OpenSession(openCtx, req, backendURL); err != nil {
 		openCancel()
 		s.recordEnd(EndReasonFatalError)
 		s.emitErrorBest(ctx, ErrCodeBackendDown, err.Error(), false)
@@ -261,14 +262,15 @@ func (m *Module) Serve(ctx context.Context, req *http.Request, ps modules.Paymen
 // TerminateSession forwards an explicit stop to the local backend so
 // gateway-triggered end requests tear down the render runtime before
 // the worker releases payment state.
-func (m *Module) TerminateSession(ctx context.Context, gatewaySessionID string) error {
+func (m *Module) TerminateSession(ctx context.Context, gatewaySessionID string, backendURL string) error {
 	if strings.TrimSpace(gatewaySessionID) == "" {
 		return errors.New("vtuber_session: empty gateway session id")
 	}
-	if m.cfg.BackendURL == "" {
+	backendURL = backendURLForRequest(nil, backendURL)
+	if backendURL == "" {
 		return errors.New("vtuber_session: empty BackendURL in config")
 	}
-	return m.cfg.Backend.Close(ctx, gatewaySessionID, m.cfg.BackendURL)
+	return m.cfg.Backend.Close(ctx, gatewaySessionID, backendURL)
 }
 
 // extractSessionID picks the session_id from the request — header
@@ -300,6 +302,15 @@ func extractWorkID(req *http.Request) string {
 		return ""
 	}
 	return req.Header.Get("X-Vtuber-Work-Id")
+}
+
+func backendURLForRequest(req *http.Request, fallback string) string {
+	if req != nil {
+		if url := strings.TrimSpace(req.Header.Get("X-Vtuber-Backend-Url")); url != "" {
+			return url
+		}
+	}
+	return fallback
 }
 
 // runLoop drives the debit ticker and reacts to bridge inbound events
@@ -433,10 +444,11 @@ func (s *session) tick(ctx context.Context) error {
 // exhausted. Emits one warn log per failure and one
 // recoverable-error event on the FIRST failure.
 func (s *session) debitWithRetry(ctx context.Context, units uint64) (int64, error) {
+	debitSeq := s.debitSeq + 1
 	for attempt := 1; attempt <= s.cfg.DebitRetryBudget; attempt++ {
-		s.debitSeq++
-		balance, err := s.ps.Debit(ctx, units, s.debitSeq)
+		balance, err := s.ps.Debit(ctx, units, debitSeq)
 		if err == nil {
+			s.debitSeq = debitSeq
 			if s.consecutiveDebitFailures > 0 {
 				s.cfg.Logger.Info("Debit recovered after transient failures",
 					"recovered_after", s.consecutiveDebitFailures)

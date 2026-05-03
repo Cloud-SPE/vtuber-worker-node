@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,22 +14,33 @@ import (
 
 type fakeSessionTerminator struct {
 	calls []string
+	urls  []string
 	err   error
 }
 
-func (f *fakeSessionTerminator) TerminateSession(_ context.Context, gatewaySessionID string) error {
+func (f *fakeSessionTerminator) TerminateSession(_ context.Context, gatewaySessionID string, backendURL string) error {
 	f.calls = append(f.calls, gatewaySessionID)
+	f.urls = append(f.urls, backendURL)
 	return f.err
 }
 
 func TestStreamingTopupHandler_HappyPath(t *testing.T) {
 	payee := payeedaemon.NewFake()
+	payee.SenderAddress = []byte{0x01, 0x02}
+	_, _ = payee.OpenSession(context.Background(), payeedaemon.OpenSessionRequest{
+		WorkID:              "work_456",
+		Capability:          "livepeer:vtuber-session",
+		Offering:            "vtuber-default-1080p30",
+		PricePerWorkUnitWei: big.NewInt(1),
+		WorkUnit:            "second",
+	})
 	registry := &streamingSessionRegistry{
 		byGatewayID: map[string]streamingSessionInfo{
 			"gw_123": {
 				GatewaySessionID: "gw_123",
 				WorkerSessionID:  "worker_abc",
 				WorkID:           "work_456",
+				BackendURL:       "http://runner.local/start",
 				Sender:           []byte{0x01, 0x02},
 			},
 		},
@@ -80,6 +92,15 @@ func TestStreamingTopupHandler_UnknownSession(t *testing.T) {
 
 func TestStreamingEndHandler_HappyPath(t *testing.T) {
 	payee := payeedaemon.NewFake()
+	payee.SenderAddress = []byte{0x01, 0x02}
+	_, _ = payee.OpenSession(context.Background(), payeedaemon.OpenSessionRequest{
+		WorkID:              "work_456",
+		Capability:          "livepeer:vtuber-session",
+		Offering:            "vtuber-default-1080p30",
+		PricePerWorkUnitWei: big.NewInt(1),
+		WorkUnit:            "second",
+	})
+	_, _ = payee.ProcessPayment(context.Background(), []byte("bind"), "work_456")
 	terminator := &fakeSessionTerminator{}
 	registry := &streamingSessionRegistry{
 		byGatewayID: map[string]streamingSessionInfo{
@@ -87,6 +108,7 @@ func TestStreamingEndHandler_HappyPath(t *testing.T) {
 				GatewaySessionID: "gw_123",
 				WorkerSessionID:  "worker_abc",
 				WorkID:           "work_456",
+				BackendURL:       "http://runner.local/start",
 				Sender:           []byte{0x01, 0x02},
 			},
 		},
@@ -103,6 +125,9 @@ func TestStreamingEndHandler_HappyPath(t *testing.T) {
 	}
 	if len(terminator.calls) != 1 || terminator.calls[0] != "gw_123" {
 		t.Fatalf("TerminateSession calls: got %#v", terminator.calls)
+	}
+	if len(terminator.urls) != 1 || terminator.urls[0] != "http://runner.local/start" {
+		t.Fatalf("TerminateSession backend URLs: got %#v", terminator.urls)
 	}
 	if payee.CloseSessionCalls != 1 {
 		t.Fatalf("CloseSessionCalls: got %d, want 1", payee.CloseSessionCalls)
@@ -142,6 +167,15 @@ func TestStreamingEndHandler_UnknownSession(t *testing.T) {
 
 func TestStreamingEndHandler_BackendStopFailure(t *testing.T) {
 	payee := payeedaemon.NewFake()
+	payee.SenderAddress = []byte{0x01, 0x02}
+	_, _ = payee.OpenSession(context.Background(), payeedaemon.OpenSessionRequest{
+		WorkID:              "work_456",
+		Capability:          "livepeer:vtuber-session",
+		Offering:            "vtuber-default-1080p30",
+		PricePerWorkUnitWei: big.NewInt(1),
+		WorkUnit:            "second",
+	})
+	_, _ = payee.ProcessPayment(context.Background(), []byte("bind"), "work_456")
 	terminator := &fakeSessionTerminator{err: context.DeadlineExceeded}
 	registry := &streamingSessionRegistry{
 		byGatewayID: map[string]streamingSessionInfo{
@@ -149,6 +183,7 @@ func TestStreamingEndHandler_BackendStopFailure(t *testing.T) {
 				GatewaySessionID: "gw_123",
 				WorkerSessionID:  "worker_abc",
 				WorkID:           "work_456",
+				BackendURL:       "http://runner.local/start",
 				Sender:           []byte{0x01, 0x02},
 			},
 		},

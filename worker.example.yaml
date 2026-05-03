@@ -84,9 +84,12 @@ worker:
 # Both daemon and worker parse these. Prices = wei per work-unit. The
 # daemon serves exact ticket params; the worker advertises the same
 # prices on `GET /registry/offerings`, serves
-# `POST /v1/payment/ticket-params`, instantiates the matching
+# `POST /v1/payment/ticket-params`, opens the payee-side session binding,
+# credits the first payment which binds sender, instantiates the matching
 # StreamingModule, and forwards session-open requests to the backend_url
-# (the local session-runner).
+# (the local session-runner). Later debits send raw work-units plus
+# retry-stable `debit_seq`; the daemon prices them from the bound
+# `{offering, price_per_work_unit_wei, work_unit}` metadata.
 capabilities:
   - capability: "livepeer:vtuber-session"
     # Streaming sessions meter on wall-clock seconds, not tokens.

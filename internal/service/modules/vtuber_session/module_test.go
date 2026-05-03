@@ -295,6 +295,14 @@ func TestServe_DebitFailureRetriesThenEscalates(t *testing.T) {
 		t.Fatal("Serve did not return after Debit retry exhaustion")
 	}
 
+	debits := r.ps.snapshotDebits()
+	if len(debits) != 2 {
+		t.Fatalf("expected 2 debit attempts, got %d", len(debits))
+	}
+	if debits[0].seq != debits[1].seq {
+		t.Fatalf("retry must reuse debit_seq; got %d then %d", debits[0].seq, debits[1].seq)
+	}
+
 	// Count session.error events: should be at least 1 recoverable +
 	// 1 fatal. The recoverable one fires on attempt 1; the fatal one
 	// fires when the budget is exhausted.

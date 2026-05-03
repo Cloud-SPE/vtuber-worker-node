@@ -4,7 +4,7 @@ Production bring-up for one vtuber worker host.
 
 This stack is three local services:
 
-- `payment-daemon` in receiver mode
+- `payment-daemon` `v4.0.1` or newer in receiver mode
 - `session-runner` as the local backend
 - `vtuber-worker-node` as the public worker surface
 
@@ -71,6 +71,8 @@ Start from `worker.example.yaml` and set:
 - `worker.payment_daemon_socket`
 - `worker.max_concurrent_requests: 1`
 - `capabilities[].offerings[].backend_url: http://session-runner:8080/api/sessions/start`
+
+With the current payment contract, the worker opens the payee-side session before first credit, the first successful `ProcessPayment` binds sender, and later topups/debits run against that same bound session.
 
 For the first production host:
 
