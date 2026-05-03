@@ -145,42 +145,42 @@ func streamingMiddleware(d streamingDeps) http.HandlerFunc {
 		}
 		r.Header.Set("X-Vtuber-Session-Id", gatewaySessionID)
 
-			offering, err := extractStreamingOffering(r, body)
-			if err != nil {
-				http.Error(w, "invalid offering: "+err.Error(), http.StatusBadRequest)
-				return
-			}
-			route, ok := d.cfg.Lookup(d.module.Capability(), types.ModelID(offering))
-			if !ok {
-				http.Error(w, "unknown offering: "+offering, http.StatusNotFound)
-				return
-			}
-			r.Header.Set("X-Vtuber-Offering", offering)
-			r.Header.Set("X-Vtuber-Backend-Url", route.BackendURL)
+		offering, err := extractStreamingOffering(r, body)
+		if err != nil {
+			http.Error(w, "invalid offering: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		route, ok := d.cfg.Lookup(d.module.Capability(), types.ModelID(offering))
+		if !ok {
+			http.Error(w, "unknown offering: "+offering, http.StatusNotFound)
+			return
+		}
+		r.Header.Set("X-Vtuber-Offering", offering)
+		r.Header.Set("X-Vtuber-Backend-Url", route.BackendURL)
 
-			// 4. OpenSession + ProcessPayment.
-			workID := string(deriveWorkID(paymentBytes))
-			workerSessionID := deriveWorkerSessionID(workID)
-			r.Header.Set("X-Vtuber-Worker-Session-Id", workerSessionID)
-			r.Header.Set("X-Vtuber-Work-Id", workID)
-			pricePerUnit, ok := new(big.Int).SetString(route.PricePerWorkUnitWei, 10)
-			if !ok {
-				http.Error(w, "invalid route price_per_work_unit_wei", http.StatusInternalServerError)
-				return
-			}
-			if _, err := d.payee.OpenSession(r.Context(), payeedaemon.OpenSessionRequest{
-				WorkID:              workID,
-				Capability:          string(route.Capability),
-				Offering:            string(route.Offering),
-				PricePerWorkUnitWei: pricePerUnit,
-				WorkUnit:            string(route.WorkUnit),
-			}); err != nil {
-				d.logger.Warn("streaming: OpenSession failed",
-					"err", err, "capability", d.module.Capability(), "offering", offering)
-				http.Error(w, "OpenSession: "+err.Error(), http.StatusBadRequest)
-				return
-			}
-			ppRes, err := d.payee.ProcessPayment(r.Context(), paymentBytes, workID)
+		// 4. OpenSession + ProcessPayment.
+		workID := string(deriveWorkID(paymentBytes))
+		workerSessionID := deriveWorkerSessionID(workID)
+		r.Header.Set("X-Vtuber-Worker-Session-Id", workerSessionID)
+		r.Header.Set("X-Vtuber-Work-Id", workID)
+		pricePerUnit, ok := new(big.Int).SetString(route.PricePerWorkUnitWei, 10)
+		if !ok {
+			http.Error(w, "invalid route price_per_work_unit_wei", http.StatusInternalServerError)
+			return
+		}
+		if _, err := d.payee.OpenSession(r.Context(), payeedaemon.OpenSessionRequest{
+			WorkID:              workID,
+			Capability:          string(route.Capability),
+			Offering:            string(route.Offering),
+			PricePerWorkUnitWei: pricePerUnit,
+			WorkUnit:            string(route.WorkUnit),
+		}); err != nil {
+			d.logger.Warn("streaming: OpenSession failed",
+				"err", err, "capability", d.module.Capability(), "offering", offering)
+			http.Error(w, "OpenSession: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		ppRes, err := d.payee.ProcessPayment(r.Context(), paymentBytes, workID)
 		if err != nil {
 			d.logger.Warn("streaming: ProcessPayment failed",
 				"err", err, "capability", d.module.Capability())
@@ -189,13 +189,13 @@ func streamingMiddleware(d streamingDeps) http.HandlerFunc {
 		}
 
 		// 5. Construct the PaymentSession adapter for this session.
-			d.sessions.Upsert(streamingSessionInfo{
-				GatewaySessionID: gatewaySessionID,
-				WorkerSessionID:  workerSessionID,
-				WorkID:           workID,
-				BackendURL:       route.BackendURL,
-				Sender:           ppRes.Sender,
-			})
+		d.sessions.Upsert(streamingSessionInfo{
+			GatewaySessionID: gatewaySessionID,
+			WorkerSessionID:  workerSessionID,
+			WorkID:           workID,
+			BackendURL:       route.BackendURL,
+			Sender:           ppRes.Sender,
+		})
 		ps := newPaymentSessionAdapter(d.payee, ppRes.Sender, workID, d.recorder, func() {
 			d.sessions.Delete(gatewaySessionID)
 		})
@@ -366,7 +366,7 @@ func streamingEndHandler(
 		}
 		if terminator != nil {
 			closeCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-				err := terminator.TerminateSession(closeCtx, gatewaySessionID, info.BackendURL)
+			err := terminator.TerminateSession(closeCtx, gatewaySessionID, info.BackendURL)
 			cancel()
 			if err != nil {
 				http.Error(w, "backend stop: "+err.Error(), http.StatusBadGateway)

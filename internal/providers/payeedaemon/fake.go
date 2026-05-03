@@ -24,7 +24,7 @@ type Fake struct {
 	mu sync.Mutex
 
 	ProcessPaymentError       error
-	OpenSessionError         error
+	OpenSessionError          error
 	DebitBalanceError         error
 	SufficientBalanceError    error
 	CloseSessionError         error
@@ -37,14 +37,14 @@ type Fake struct {
 	CreditPerCall             *big.Int
 	DebitWeiPerWorkUnit       *big.Int
 	SenderAddress             []byte
-	OpenSessionCalls         int
+	OpenSessionCalls          int
 	ProcessPaymentCalls       int
 	DebitBalanceCalls         int
 	SufficientBalanceCalls    int
 	CloseSessionCalls         int
 	GetQuoteCalls             int
 	GetTicketParamsCalls      int
-	LastOpenSession          OpenSessionRequest
+	LastOpenSession           OpenSessionRequest
 	LastProcessPaymentPayload []byte
 	LastDebitBalanceWorkUnits int64
 	LastDebitBalanceSeq       uint64
@@ -82,13 +82,13 @@ type fakeSessionBinding struct {
 // NewFake returns a ready-to-use fake with sensible defaults.
 func NewFake() *Fake {
 	return &Fake{
-			CreditPerCall:       new(big.Int).SetInt64(1_000_000_000),
-			DebitWeiPerWorkUnit: new(big.Int).SetInt64(1),
-			SenderAddress:       []byte{0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d},
-			balances:            map[string]*big.Int{},
-			sessions:            map[string]fakeSessionBinding{},
-			debitReplays:        map[string]*big.Int{},
-		}
+		CreditPerCall:       new(big.Int).SetInt64(1_000_000_000),
+		DebitWeiPerWorkUnit: new(big.Int).SetInt64(1),
+		SenderAddress:       []byte{0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d},
+		balances:            map[string]*big.Int{},
+		sessions:            map[string]fakeSessionBinding{},
+		debitReplays:        map[string]*big.Int{},
+	}
 }
 
 func (f *Fake) Close() error { return nil }
