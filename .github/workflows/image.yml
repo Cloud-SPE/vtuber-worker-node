@@ -79,6 +79,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Compute release image tag
+        id: release_tag
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "${GITHUB_OUTPUT}"
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
         with:
@@ -87,17 +90,17 @@ jobs:
       - name: Wait for released worker image
         run: |
           for attempt in {1..12}; do
-            if docker buildx imagetools inspect "${IMAGE}:${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            if docker buildx imagetools inspect "${IMAGE}:${{ steps.release_tag.outputs.value }}" >/dev/null 2>&1; then
               exit 0
             fi
             sleep 10
           done
-          echo "Released worker image ${IMAGE}:${GITHUB_REF_NAME} was not visible after waiting."
+          echo "Released worker image ${IMAGE}:${{ steps.release_tag.outputs.value }} was not visible after waiting."
           exit 1
       - name: Trivy scan released worker image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ${{ env.IMAGE }}:${{ github.ref_name }}
+          image-ref: ${{ env.IMAGE }}:${{ steps.release_tag.outputs.value }}
           format: table
           exit-code: "1"
           severity: "CRITICAL,HIGH"
